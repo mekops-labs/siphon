@@ -1,9 +1,4 @@
-# data-collector
-
-[![License MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://img.shields.io/badge/License-MIT-brightgreen.svg)
-[![Go Report Card](https://goreportcard.com/badge/gitlab.com/mek_x/data-collector)](https://goreportcard.com/report/gitlab.com/mek_x/data-collector)
-[![CI status](https://gitlab.com/mek_x/data-collector/badges/main/pipeline.svg)](https://gitlab.com/mek_x/data-collector/-/commits/main)
-[![coverage](https://gitlab.com/mek_x/data-collector/badges/main/coverage.svg)](https://gitlab.com/mek_x/data-collector/-/graphs/main/charts)
+# Siphon
 
 This is a program used to gather data from various sources (like MQTT topics) and push the data to different sinks (e.g.
 to file, Gotify notification service, IOTPlotter). Dynamically configurable and intended to be deployed as a
@@ -14,16 +9,29 @@ containerized service.
 Overall architecture:
 
 ```mermaid
-flowchart LR
-    A1[Collector A] --> B1[Parser]
-    A2[Collector B] --> B2[Parser]
-    B1 & B2 --> C(DataStore)
-    C --> D1[Dispatcher A]
-    C --> D2[Dispatcher B]
-    D1 --> S1[Sink A]
-    D1 --> S2[Sink B]
-    D2 --> S3[Sink C]
-    D2 --> S4[Sink D]
+graph LR
+    subgraph Sources
+        A1[MQTT Topic]
+        A2[Local File]
+        A3[Shell Command]
+    end
+
+    subgraph Core_Engine[Siphon Core]
+        B[Parsers: JSONPath/Regex]
+        C{Data Hub}
+        D[Dispatchers: Cron/Event]
+    end
+
+    subgraph Destinations
+        E1[REST / Gotify]
+        E2[MQTT / HA Discovery]
+        E3[CSV / File Sink]
+    end
+
+    A1 & A2 & A3 --> B
+    B --> C
+    C --> D
+    D --> E1 & E2 & E3
 ```
 
 Legend:
