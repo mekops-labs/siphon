@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 (2026-01-25)
+
+- rebrand the `data-collector` to `Siphon`
+- move development to new github repo
+
 ## 0.3.0 (2026-01-11)
 
 - (sinks) add the ntfy sink
