@@ -11,14 +11,14 @@ import (
 
 	yaml "github.com/goccy/go-yaml"
 
-	_ "gitlab.com/mek_x/data-collector/internal/modules"
+	_ "github.com/mekops-labs/siphon/internal/modules"
 
-	"gitlab.com/mek_x/data-collector/internal/utils"
-	"gitlab.com/mek_x/data-collector/pkg/collector"
-	"gitlab.com/mek_x/data-collector/pkg/datastore"
-	"gitlab.com/mek_x/data-collector/pkg/dispatcher"
-	"gitlab.com/mek_x/data-collector/pkg/parser"
-	"gitlab.com/mek_x/data-collector/pkg/sink"
+	"github.com/mekops-labs/siphon/internal/utils"
+	"github.com/mekops-labs/siphon/pkg/collector"
+	"github.com/mekops-labs/siphon/pkg/datastore"
+	"github.com/mekops-labs/siphon/pkg/dispatcher"
+	"github.com/mekops-labs/siphon/pkg/parser"
+	"github.com/mekops-labs/siphon/pkg/sink"
 )
 
 // this should be normally set using the ldflags variable setting

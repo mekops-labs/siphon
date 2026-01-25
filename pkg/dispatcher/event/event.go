@@ -7,9 +7,9 @@ import (
 	"text/template"
 	"time"
 
-	"gitlab.com/mek_x/data-collector/pkg/datastore"
-	"gitlab.com/mek_x/data-collector/pkg/dispatcher"
-	"gitlab.com/mek_x/data-collector/pkg/sink"
+	"github.com/mekops-labs/siphon/pkg/datastore"
+	"github.com/mekops-labs/siphon/pkg/dispatcher"
+	"github.com/mekops-labs/siphon/pkg/sink"
 
 	"github.com/antonmedv/expr"
 	"github.com/mitchellh/mapstructure"

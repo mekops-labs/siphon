@@ -1,4 +1,4 @@
-module gitlab.com/mek_x/data-collector
+module github.com/mekops-labs/siphon
 
 go 1.25
 

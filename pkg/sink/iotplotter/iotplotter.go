@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/mekops-labs/siphon/pkg/sink"
 	"github.com/mitchellh/mapstructure"
-	"gitlab.com/mek_x/data-collector/pkg/sink"
 )
 
 const baseUrl = "http://iotplotter.com/api/v2/feed"

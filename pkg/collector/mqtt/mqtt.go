@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/mekops-labs/siphon/internal/utils"
+	"github.com/mekops-labs/siphon/pkg/collector"
+	"github.com/mekops-labs/siphon/pkg/parser"
 	"github.com/mitchellh/mapstructure"
-	"gitlab.com/mek_x/data-collector/internal/utils"
-	"gitlab.com/mek_x/data-collector/pkg/collector"
-	"gitlab.com/mek_x/data-collector/pkg/parser"
 )
 
 type subscription struct {
@@ -70,7 +70,7 @@ func New(p any) collector.Collector {
 
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(opt.Url)
-	opts.SetClientID("data-collector-" + utils.RandomString(5))
+	opts.SetClientID("siphon-" + utils.RandomString(5))
 	opts.SetUsername(opt.User)
 	opts.SetPassword(opt.Pass)
 	opts.OnConnect = m.connectHandler

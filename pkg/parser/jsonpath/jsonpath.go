@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"gitlab.com/mek_x/data-collector/pkg/datastore"
-	"gitlab.com/mek_x/data-collector/pkg/parser"
+	"github.com/mekops-labs/siphon/pkg/datastore"
+	"github.com/mekops-labs/siphon/pkg/parser"
 
 	jp "github.com/PaesslerAG/jsonpath"
 	"github.com/antonmedv/expr"

@@ -5,8 +5,8 @@ import (
 	"regexp"
 
 	"github.com/antonmedv/expr"
-	"gitlab.com/mek_x/data-collector/pkg/datastore"
-	"gitlab.com/mek_x/data-collector/pkg/parser"
+	"github.com/mekops-labs/siphon/pkg/datastore"
+	"github.com/mekops-labs/siphon/pkg/parser"
 )
 
 type regexParser struct {

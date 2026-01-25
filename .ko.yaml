@@ -3,7 +3,7 @@ defaultBaseImage: docker.io/alpine:3.18.4
 builds:
 - id: main
   dir: .
-  main: ./cmd/collector
+  main: ./cmd/siphon
   flags:
   - -tags
   - netgo,timetzdata

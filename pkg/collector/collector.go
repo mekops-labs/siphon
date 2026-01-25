@@ -1,7 +1,7 @@
 package collector
 
 import (
-	"gitlab.com/mek_x/data-collector/pkg/parser"
+	"github.com/mekops-labs/siphon/pkg/parser"
 )
 
 type Collector interface {

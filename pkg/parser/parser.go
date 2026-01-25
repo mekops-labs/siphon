@@ -1,6 +1,6 @@
 package parser
 
-import "gitlab.com/mek_x/data-collector/pkg/datastore"
+import "github.com/mekops-labs/siphon/pkg/datastore"
 
 type Parser interface {
 	Parse(buf []byte) error

@@ -86,8 +86,8 @@ volumes:
   config:
 
 services:
-  data-collector:
-    image: registry.gitlab.com/mek_x/data-collector:latest
+  siphon:
+    image: ghcr.io/mekops-labs/siphon:latest
     command:
     - /config/config.yaml
     volumes:
@@ -96,7 +96,7 @@ services:
 ```
 
 Configuration file (`config.yaml`) needs to be manually copied to the `config` volume in this case. `command` is giving
-an argument to the `data-collector` application, where to look for it.
+an argument to the `siphon` application, where to look for it.
 
 ## Development
 

@@ -5,9 +5,9 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/mekops-labs/siphon/pkg/collector"
+	"github.com/mekops-labs/siphon/pkg/parser"
 	"github.com/mitchellh/mapstructure"
-	"gitlab.com/mek_x/data-collector/pkg/collector"
-	"gitlab.com/mek_x/data-collector/pkg/parser"
 )
 
 type source struct {

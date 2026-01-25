@@ -1,8 +1,8 @@
 package dispatcher
 
 import (
-	"gitlab.com/mek_x/data-collector/pkg/datastore"
-	"gitlab.com/mek_x/data-collector/pkg/sink"
+	"github.com/mekops-labs/siphon/pkg/datastore"
+	"github.com/mekops-labs/siphon/pkg/sink"
 )
 
 type Dispatcher interface {
