@@ -1,5 +1,7 @@
 # Siphon
 
+![Siphon logo](./docs/logo-256.png)
+
 This is a program used to gather data from various sources (like MQTT topics) and push the data to different sinks (e.g.
 to file, Gotify notification service, IOTPlotter). Dynamically configurable and intended to be deployed as a
 containerized service.
