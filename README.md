@@ -1,5 +1,7 @@
 # Siphon
 
+**Project web site:** [mekops.com/projects/siphon](https://mekops.com/projects/siphon/)
+
 ![Siphon logo](./docs/logo-256.png)
 
 This is a program used to gather data from various sources (like MQTT topics) and push the data to different sinks (e.g.
