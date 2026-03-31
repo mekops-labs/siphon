@@ -1,96 +1,112 @@
 package file
 
 import (
+	"context"
+	"log"
 	"os"
+	"sync"
 	"time"
 
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/collector"
-	"github.com/mekops-labs/siphon/pkg/parser"
 	"github.com/mitchellh/mapstructure"
 )
 
-type source struct {
-	path   string
-	parser parser.Parser
+type FileParams struct {
+	Interval int `mapstructure:"interval"` // in seconds
 }
 
 type fileSource struct {
-	sources  []source
-	interval int
-	end      chan bool
+	params FileParams
+	paths  []string
+	lock   sync.Mutex
+	bus    bus.Bus
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
-/* Main config structure. Descibes `params` field from configuration yaml. */
-type FileParams struct {
-	Interval int
-}
-
+// Ensure fileSource implements the Collector interface
 var _ collector.Collector = (*fileSource)(nil)
 
-/* In this module init function we register our collector in global collector registry */
 func init() {
 	collector.Registry.Add("file", New)
 }
 
 func New(p any) collector.Collector {
 	var opt FileParams
-
 	if err := mapstructure.Decode(p, &opt); err != nil {
+		log.Printf("File collector config error: %v", err)
 		return nil
 	}
 
-	// Set defaults
-	if opt.Interval == 0 {
-		opt.Interval = 60
+	// Default to 10 seconds if not specified
+	if opt.Interval <= 0 {
+		opt.Interval = 10
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &fileSource{
-		sources:  make([]source, 0),
-		interval: opt.Interval,
-		end:      make(chan bool),
+		params: opt,
+		paths:  make([]string, 0),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
 
-func (f *fileSource) readAndParse() {
-	for _, i := range f.sources {
-		buf, err := os.ReadFile(i.path)
-		if err != nil {
-			continue
-		}
-		i.parser.Parse(buf)
-	}
+func (f *fileSource) RegisterTopic(topic string) {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	// For the file collector, the "topic" is the file path
+	f.paths = append(f.paths, topic)
+	log.Printf("File collector registered path: %s", topic)
 }
 
-func (f *fileSource) Start() error {
+func (f *fileSource) Start(b bus.Bus) {
+	f.bus = b
+	f.wg.Add(1)
+
 	go func() {
-		for len(f.sources) == 0 {
-			time.Sleep(10 * time.Millisecond)
-		}
-		f.readAndParse()
-	loop:
+		defer f.wg.Done()
+		ticker := time.NewTicker(time.Duration(f.params.Interval) * time.Second)
+		defer ticker.Stop()
+
+		// Do an immediate initial read
+		f.readFiles()
+
 		for {
 			select {
-			case <-f.end:
-				f.end <- false
-				close(f.end)
-				break loop
-			case <-time.After(time.Duration(f.interval) * time.Second):
-				f.readAndParse()
+			case <-f.ctx.Done():
+				return
+			case <-ticker.C:
+				f.readFiles()
 			}
 		}
 	}()
-	return nil
 }
 
-func (f *fileSource) AddDataSource(path string, parser parser.Parser) error {
-	f.sources = append(f.sources, source{
-		path:   path,
-		parser: parser,
-	})
-	return nil
+func (f *fileSource) readFiles() {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	for _, path := range f.paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			log.Printf("File read error (%s): %v", path, err)
+			continue
+		}
+
+		// Publish raw file contents to the Event Bus
+		if err := f.bus.Publish(path, data); err != nil {
+			log.Printf("File Bus Publish Error (%s): %v", path, err)
+		}
+	}
 }
 
 func (f *fileSource) End() {
-	f.end <- true
-	<-f.end
+	f.cancel()
+	f.wg.Wait()
 }

@@ -7,24 +7,17 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/mekops-labs/siphon/internal/utils"
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/collector"
-	"github.com/mekops-labs/siphon/pkg/parser"
 	"github.com/mitchellh/mapstructure"
 )
 
-type subscription struct {
-	topic  string
-	parser *parser.Parser
-	active bool
-}
-
 type mqttSource struct {
-	client             mqtt.Client
-	mqttOptions        *mqtt.ClientOptions
-	subscriptions      []subscription
-	lock               sync.Mutex
-	connectHandler     mqtt.OnConnectHandler
-	connectLostHandler mqtt.ConnectionLostHandler
+	client      mqtt.Client
+	mqttOptions *mqtt.ClientOptions
+	topics      []string // List of topics requested by the V2 Pipelines
+	lock        sync.Mutex
+	bus         bus.Bus // Reference to the central Event Bus
 }
 
 type MqttParams struct {
@@ -33,6 +26,7 @@ type MqttParams struct {
 	Pass string
 }
 
+// Ensure mqttSource implements the new Collector interface
 var _ collector.Collector = (*mqttSource)(nil)
 
 func init() {
@@ -40,7 +34,6 @@ func init() {
 }
 
 func New(p any) collector.Collector {
-
 	var opt MqttParams
 
 	if err := mapstructure.Decode(p, &opt); err != nil {
@@ -51,21 +44,8 @@ func New(p any) collector.Collector {
 		return nil
 	}
 
-	ssl := tls.Config{
-		RootCAs: nil,
-	}
-
-	m := &mqttSource{}
-	m.subscriptions = make([]subscription, 0)
-	m.connectHandler = func(client mqtt.Client) {
-		log.Print("MQTT connected to broker. Sending subscription requests...")
-		m.subscribe()
-	}
-	m.connectLostHandler = func(client mqtt.Client, err error) {
-		log.Printf("MQTT connection lost: %v", err)
-		for i := range m.subscriptions {
-			m.subscriptions[i].active = false
-		}
+	m := &mqttSource{
+		topics: make([]string, 0),
 	}
 
 	opts := mqtt.NewClientOptions()
@@ -73,48 +53,55 @@ func New(p any) collector.Collector {
 	opts.SetClientID("siphon-" + utils.RandomString(5))
 	opts.SetUsername(opt.User)
 	opts.SetPassword(opt.Pass)
-	opts.OnConnect = m.connectHandler
-	opts.OnConnectionLost = m.connectLostHandler
 	opts.SetAutoReconnect(true)
 	opts.SetConnectRetry(true)
-	opts.SetTLSConfig(&ssl)
+	opts.SetTLSConfig(&tls.Config{RootCAs: nil})
 
-	client := mqtt.NewClient(opts)
+	// Connection handlers
+	opts.OnConnect = func(client mqtt.Client) {
+		log.Print("MQTT connected to broker. Subscribing to pipeline topics...")
+		m.subscribe()
+	}
+	opts.OnConnectionLost = func(client mqtt.Client, err error) {
+		log.Printf("MQTT connection lost: %v", err)
+	}
 
 	m.mqttOptions = opts
-	m.client = client
+	m.client = mqtt.NewClient(opts)
 
 	return m
 }
 
-func (m *mqttSource) connect() error {
-	if token := m.client.Connect(); token.Wait() && token.Error() != nil {
-		return token.Error()
-	}
-	return nil
-}
-
 func (m *mqttSource) subscribe() {
-	if !m.client.IsConnected() {
+	if !m.client.IsConnected() || m.bus == nil {
 		return
 	}
 
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for i, s := range m.subscriptions {
-		if !s.active {
-			p := *m.subscriptions[i].parser
-			if token := m.client.Subscribe(s.topic, 0, func(c mqtt.Client, msg mqtt.Message) {
-				if err := p.Parse(msg.Payload()); err != nil {
-					log.Printf("MQTT: %s: can't parse message: %s", msg.Topic(), err)
-				}
-			}); token.Wait() && token.Error() != nil {
-				log.Print(token.Error())
-				continue
+	for _, topic := range m.topics {
+		// Subscribe and push raw payloads directly to the Event Bus
+		if token := m.client.Subscribe(topic, 0, func(c mqtt.Client, msg mqtt.Message) {
+
+			// The Collector acts as a pure bridge to the Bus
+			if err := m.bus.Publish(msg.Topic(), msg.Payload()); err != nil {
+				log.Printf("MQTT Bus Publish Error (%s): %v", msg.Topic(), err)
 			}
-			m.subscriptions[i].active = true
+
+		}); token.Wait() && token.Error() != nil {
+			log.Printf("MQTT Subscribe Error (%s): %v", topic, token.Error())
+		} else {
+			log.Printf("MQTT Subscribed to topic: %s", topic)
 		}
+	}
+}
+
+// Start connects to the broker and saves the bus reference
+func (m *mqttSource) Start(b bus.Bus) {
+	m.bus = b
+	if token := m.client.Connect(); token.Wait() && token.Error() != nil {
+		log.Printf("MQTT connect error: %v", token.Error())
 	}
 }
 
@@ -122,16 +109,14 @@ func (m *mqttSource) End() {
 	m.client.Disconnect(100)
 }
 
-func (m *mqttSource) Start() error {
-	return m.connect()
-}
+// RegisterTopic replaces AddDataSource. It tells the collector what to listen for based on pipeline configs.
+func (m *mqttSource) RegisterTopic(topic string) {
+	m.lock.Lock()
+	m.topics = append(m.topics, topic)
+	m.lock.Unlock()
 
-func (m *mqttSource) AddDataSource(topic string, parser parser.Parser) error {
-	s := subscription{
-		topic:  topic,
-		parser: &parser,
+	// If already connected (e.g., config reload), subscribe immediately
+	if m.client.IsConnected() {
+		m.subscribe()
 	}
-	m.subscriptions = append(m.subscriptions, s)
-	m.subscribe()
-	return nil
 }

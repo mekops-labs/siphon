@@ -1,99 +1,113 @@
-package collector_shell
+package shell
 
 import (
+	"context"
 	"log"
 	"os/exec"
+	"sync"
 	"time"
 
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/collector"
-	"github.com/mekops-labs/siphon/pkg/parser"
 	"github.com/mitchellh/mapstructure"
 )
 
-type source struct {
-	command string
-	parser  parser.Parser
-}
-
-type shellCollector struct {
-	sources  []source
-	interval int
-	end      chan bool
-}
-
-/* Main config structure. Descibes `params` field from configuration yaml. */
 type ShellParams struct {
-	Interval int
+	Interval int `mapstructure:"interval"` // in seconds
 }
 
-var _ collector.Collector = (*shellCollector)(nil)
+type shellSource struct {
+	params   ShellParams
+	commands []string
+	lock     sync.Mutex
+	bus      bus.Bus
 
-/* In this module init function we register our collector in global collector registry */
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// Ensure shellSource implements the Collector interface
+var _ collector.Collector = (*shellSource)(nil)
+
 func init() {
 	collector.Registry.Add("shell", New)
 }
 
 func New(p any) collector.Collector {
 	var opt ShellParams
-
 	if err := mapstructure.Decode(p, &opt); err != nil {
+		log.Printf("Shell collector config error: %v", err)
 		return nil
 	}
 
-	// Set defaults
-	if opt.Interval == 0 {
-		opt.Interval = 60
+	if opt.Interval <= 0 {
+		opt.Interval = 10
 	}
 
-	return &shellCollector{
-		sources:  make([]source, 0),
-		interval: opt.Interval,
-		end:      make(chan bool),
-	}
-}
+	ctx, cancel := context.WithCancel(context.Background())
 
-func (f *shellCollector) runAndParse() {
-	for n, i := range f.sources {
-		cmd := exec.Command("sh", "-c", i.command)
-		buf, err := cmd.Output()
-		if err != nil {
-			log.Print(n, ": can't execute - ", err)
-			continue
-		}
-		i.parser.Parse(buf)
+	return &shellSource{
+		params:   opt,
+		commands: make([]string, 0),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
 }
 
-func (f *shellCollector) Start() error {
+func (s *shellSource) RegisterTopic(topic string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	// For the shell collector, the "topic" is the actual shell command
+	s.commands = append(s.commands, topic)
+	log.Printf("Shell collector registered command: %s", topic)
+}
+
+func (s *shellSource) Start(b bus.Bus) {
+	s.bus = b
+	s.wg.Add(1)
+
 	go func() {
-		for len(f.sources) == 0 {
-			time.Sleep(10 * time.Millisecond)
-		}
-		f.runAndParse()
-	loop:
+		defer s.wg.Done()
+		ticker := time.NewTicker(time.Duration(s.params.Interval) * time.Second)
+		defer ticker.Stop()
+
+		s.executeCommands() // Initial run
+
 		for {
 			select {
-			case <-f.end:
-				f.end <- false
-				close(f.end)
-				break loop
-			case <-time.After(time.Duration(f.interval) * time.Second):
-				f.runAndParse()
+			case <-s.ctx.Done():
+				return
+			case <-ticker.C:
+				s.executeCommands()
 			}
 		}
 	}()
-	return nil
 }
 
-func (f *shellCollector) AddDataSource(path string, parser parser.Parser) error {
-	f.sources = append(f.sources, source{
-		command: path,
-		parser:  parser,
-	})
-	return nil
+func (s *shellSource) executeCommands() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for _, cmdStr := range s.commands {
+		// Use "sh -c" to support piping and shell builtins (like awk/grep)
+		cmd := exec.CommandContext(s.ctx, "sh", "-c", cmdStr)
+
+		output, err := cmd.Output() // captures stdout
+		if err != nil {
+			log.Printf("Shell command failed [%s]: %v", cmdStr, err)
+			continue
+		}
+
+		// Publish standard output to the Event Bus
+		if err := s.bus.Publish(cmdStr, output); err != nil {
+			log.Printf("Shell Bus Publish Error [%s]: %v", cmdStr, err)
+		}
+	}
 }
 
-func (f *shellCollector) End() {
-	f.end <- true
-	<-f.end
+func (s *shellSource) End() {
+	s.cancel()
+	s.wg.Wait()
 }

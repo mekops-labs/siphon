@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -8,8 +9,9 @@ import (
 
 	"github.com/mekops-labs/siphon/internal/config"
 	_ "github.com/mekops-labs/siphon/internal/modules"
-
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/collector"
+	"github.com/mekops-labs/siphon/pkg/pipeline"
 	"github.com/mekops-labs/siphon/pkg/sink"
 )
 
@@ -22,11 +24,14 @@ func main() {
 
 	log.Print("Starting Siphon v", version)
 
-	// 1. Load configuration
+	// 1. Load Config
 	cfg, err := config.Load(os.Args[1])
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// 2. Initialize the Event Bus
+	eventBus := bus.NewMemoryBus()
 
 	// 2. Initialize Collectors
 	collectors := make(map[string]collector.Collector)
@@ -57,15 +62,16 @@ func main() {
 		log.Printf("added sink: %s, type: %s", name, sinkCfg.Type)
 	}
 
-	// 4. Initialize Pipelines (Replaces the old Data and Dispatchers blocks)
-	for _, pipelineCfg := range cfg.Pipelines {
-		// TODO: Implementation for mapping pipeline nodes to the HybridBus goes here.
-		log.Printf("added pipeline: %s", pipelineCfg.Name)
-	}
+	// 5. Start the Pipeline Runner
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	// Start Collectors
+	runner := pipeline.NewRunner(eventBus, sinks)
+	runner.Start(ctx, cfg.Pipelines)
+
+	// 6. Start Collectors (Injecting the bus so they can publish)
 	for _, c := range collectors {
-		c.Start()
+		go c.Start(eventBus)
 	}
 
 	// Wait for interrupt
@@ -74,7 +80,8 @@ func main() {
 	<-c
 
 	log.Print("Exiting application...")
+	cancel() // Stop pipelines
 	for _, c := range collectors {
-		c.End()
+		c.End() // Stop collectors
 	}
 }
