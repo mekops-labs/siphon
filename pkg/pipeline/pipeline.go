@@ -71,9 +71,9 @@ func (r *Runner) processEvent(cfg config.PipelineConfig, event bus.Event) {
 		// For now, we simulate a successful pass-through.
 		log.Printf("Pipeline [%s] -> Routing data to Sink [%s]", cfg.Name, sCfg.Name)
 
-		// Note: You will need to update your Sink interface to accept standard data.
-		// e.g., targetSink.Send(ctx, event.Payload)
-		_ = targetSink
+		if err := targetSink.Send(event.Payload); err != nil {
+			log.Printf("Pipeline [%s]: Error sending to sink '%s': %v", cfg.Name, sCfg.Name, err)
+		}
 	}
 
 	// 3. Acknowledge successful processing
