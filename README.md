@@ -1,6 +1,10 @@
 # Siphon
 
 [![Go Coverage](https://github.com/mekops-labs/siphon/wiki/coverage.svg)](https://raw.githack.com/wiki/mekops-labs/siphon/coverage.html)
+[![Go Report Card](https://goreportcard.com/badge/github.com/mekops-labs/siphon)](https://goreportcard.com/report/github.com/mekops-labs/siphon)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mekops-labs/siphon.svg)](https://pkg.go.dev/github.com/mekops-labs/siphon)
+![Latest version (tag)](https://img.shields.io/github/v/tag/mekops-labs/siphon?style=flat&label=ver)
+![GitHub](https://img.shields.io/github/license/mekops-labs/siphon)
 
 **Project web site:** [mekops.com/projects/siphon](https://mekops.com/projects/siphon/)
 
