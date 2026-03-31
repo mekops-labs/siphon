@@ -1,4 +1,4 @@
-version: 1
+version: 2
 
 collectors:
   mqtt:
@@ -7,101 +7,25 @@ collectors:
       url: ssl://mqtt:8883
       user: user
       pass: pass
-  mqtt-2:
-    type: mqtt
-    params:
-      url: ssl://mqtt2:8883
-  cpuTemp:
-    type: file
-    params:
-      interval: 5
-  cmd:
-    type: shell
-    params:
-      interval: 5
 
 sinks:
-  plotter:
-    type: iotplotter
-    params:
-      url: http://iotplotter.com
-      apikey: %%IOT_API_KEY%% # we can expand env variables using the %%VAR%% pattern
-      feed: "123456789"
-  gotify:
-    type: gotify
-    params:
-      url: https://gotify
-      token: ABCDEFG
-  windy:
-    type: windy
-    params:
-      apikey: abcdefg
-      id: 1
   stdout:
     type: stdout
 
-data:
-  outside:
-    collector: mqtt
-    path: /topic1
-    parser: jsonpath
-    vars:
-      temp: "$.temp"
-      humi: "$.humi"
-    conv:
-      temp: "*10"
-  cnt:
-    collector: mqtt-2
-    path: /topic/2
-    parser: jsonpath
-    vars:
-      cnt: "$"
-  cpu:
-    collector: cpuTemp
-    path: /sys/class/thermal/thermal_zone0/temp
-    parser: regex
-    vars:
-      temp: "[0-9]*"
-    conv:
-      temp: float(temp) / 1000
-  free:
-    collector: cmd
-    path: "df -BM | grep -E '/$' | awk '{print $4}'"
-    parser: regex
-    vars:
-      space: "[0-9]*"
-    conv:
-      space: float(space) / 1024
-
-dispatchers:
-- type: cron
-  param: "*/30 * * * * *" # once per 30 seconds, cron is per second string so uses 6 columns instead of traditional 5
-  sinks:
-  - name: stdout
-    type: expr # output will be marshalled as json and expr is used to create the data
-    spec: |
-      {
-        "data": {
-          "temp": [ {"value": outside?.temp ?? 0} ],
-          "humi": [ {"value": outside?.humi ?? 0} ]
-        }
-      }
-  - name: stdout
-    type: template # output will be passed as string after the go template is applied
-    spec: |
-      Cnt: {{ .cnt.cnt }}
-- type: event
-  param:
-    trigger: outside  # this is triggering data source
-    var: timestamp    # this is variable we want to be the threshold value
-    expr: new != old  # `new` is the latest value, `old` is the previous value
-    timeout: 60       # timeout triggered when no update in data source
-  sinks:
-  - name: stdout
-    type: template
-    spec: |
-      EVENT: {{ if IsTimeout }}no update! {{ else }} new outside measurement! {{ end }}
-  - name: stdout
-    type: expr
-    spec: |
-      IsTimeout() ? "timeout" : "ok"
+pipelines:
+  - name: process_outside_weather
+    from: mqtt
+    source_topic: "/topic1"
+    bus_mode: volatile
+    parser:
+      type: jsonpath
+      vars:
+        temp: "$.temp"
+    transform:
+      temp: "temp * 10"
+    dispatch:
+      type: event
+      sinks:
+        - name: stdout
+          format: expr
+          spec: '{ "temperature": temp }'
