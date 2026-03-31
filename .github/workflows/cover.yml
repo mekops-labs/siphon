@@ -1,0 +1,22 @@
+name: Go Coverage
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ main ]
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Update coverage report
+        uses: ncruces/go-coverage-report@v0
+        with:
+          report: 'true'
+          chart: 'true'
+          amend: 'true'
+        continue-on-error: true

@@ -1,5 +1,7 @@
 # Siphon
 
+[![Go Coverage](https://github.com/mekops-labs/siphon/wiki/coverage.svg)](https://raw.githack.com/wiki/mekops-labs/siphon/coverage.html)
+
 **Project web site:** [mekops.com/projects/siphon](https://mekops.com/projects/siphon/)
 
 ![Siphon logo](./docs/logo-256.png)
