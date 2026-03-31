@@ -1,6 +1,6 @@
 name: Go Coverage
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:
