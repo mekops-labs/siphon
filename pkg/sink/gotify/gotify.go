@@ -2,86 +2,87 @@ package gotify
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
-	"text/template"
 	"time"
 
 	"github.com/mekops-labs/siphon/pkg/sink"
 	"github.com/mitchellh/mapstructure"
 )
 
-type GotifyParams struct {
-	Url      string
-	Token    string
-	Title    string
-	Priority int
+const defaultTimeout = 5 * time.Second
+
+type gotifyParams struct {
+	URL      string `mapstructure:"url"`
+	Token    string `mapstructure:"token"`
+	Title    string `mapstructure:"title"`
+	Priority int    `mapstructure:"priority"`
 }
 
-type gotify struct {
-	url      string
-	token    string
-	title    string
-	priority int
+type gotifySink struct {
+	params gotifyParams
+	client *http.Client
 }
 
-var _ sink.Sink = (*gotify)(nil)
+var _ sink.Sink = (*gotifySink)(nil)
 
 func init() {
 	sink.Registry.Add("gotify", New)
 }
 
-func New(p any) (sink.Sink, error) {
-
-	var opt GotifyParams
-
-	if err := mapstructure.Decode(p, &opt); err != nil {
-		return nil, err
+func New(params any) (sink.Sink, error) {
+	var opt gotifyParams
+	if err := mapstructure.Decode(params, &opt); err != nil {
+		return nil, fmt.Errorf("failed to decode gotify params: %w", err)
 	}
 
-	if opt.Url == "" || opt.Token == "" {
+	if opt.URL == "" || opt.Token == "" {
 		return nil, fmt.Errorf("gotify sink: url and token are required fields")
 	}
 
-	if opt.Title == "" {
-		opt.Title = ">>><<<"
-	}
-
-	return &gotify{
-		url:      opt.Url,
-		token:    opt.Token,
-		title:    opt.Title,
-		priority: opt.Priority,
+	return &gotifySink{
+		params: opt,
+		client: &http.Client{Timeout: defaultTimeout},
 	}, nil
 }
 
-func (g *gotify) Send(b []byte) error {
-
-	fMap := template.FuncMap{
-		"now": func(f string) string { return time.Now().Format(f) },
+func (s *gotifySink) Send(b []byte) error {
+	// Wrap the incoming bytes (the message) into Gotify's expected JSON format
+	payload := map[string]interface{}{
+		"message":  string(b),
+		"title":    s.params.Title,
+		"priority": s.params.Priority,
 	}
 
-	tmpl, err := template.New("title").Funcs(fMap).Parse(g.title)
+	if payload["title"] == "" {
+		payload["title"] = "Siphon Alert" // Default title
+	}
+
+	jsonPayload, _ := json.Marshal(payload)
+	targetURL, err := url.JoinPath(s.params.URL, "message")
+	if err != nil {
+		return fmt.Errorf("failed to construct target URL: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(jsonPayload))
 	if err != nil {
 		return err
 	}
 
-	var buf string
-	title := bytes.NewBufferString(buf)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gotify-Key", s.params.Token)
 
-	// Run the template to verify the output.
-	err = tmpl.Execute(title, nil)
+	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return fmt.Errorf("gotify request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("gotify returned non-200 status: %d", resp.StatusCode)
 	}
 
-	_, err = http.PostForm(fmt.Sprintf("%s/message?token=%s", g.url, g.token),
-		url.Values{
-			"message":  {string(b)},
-			"title":    {title.String()},
-			"priority": {fmt.Sprint(g.priority)},
-		})
-
-	return err
+	return nil
 }
