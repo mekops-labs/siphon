@@ -1,72 +1,31 @@
-package parser_regex
+package regex
 
 import (
-	"log"
+	"fmt"
 	"regexp"
 
-	"github.com/antonmedv/expr"
-	"github.com/mekops-labs/siphon/pkg/datastore"
 	"github.com/mekops-labs/siphon/pkg/parser"
 )
 
-type regexParser struct {
-	store datastore.DataStore
-	vars  map[string]string
-	conv  map[string]string
-	name  string
-}
-
-var _ parser.Parser = (*regexParser)(nil)
+type regexParser struct{}
 
 func init() {
-	parser.Registry.Add("regex", New)
+	parser.Register("regex", func() parser.Parser { return &regexParser{} })
 }
 
-func New(name string, store datastore.DataStore) parser.Parser {
-	return &regexParser{
-		name:  name,
-		store: store,
-		vars:  make(map[string]string),
-		conv:  make(map[string]string),
-	}
-}
+func (p *regexParser) Parse(payload []byte, vars map[string]string) (map[string]any, error) {
+	result := make(map[string]any)
+	text := string(payload)
 
-func (j *regexParser) AddVar(name, v string) {
-	j.vars[name] = v
-}
-
-func (j *regexParser) AddConv(name, v string) {
-	j.conv[name] = v
-}
-
-func (j *regexParser) Parse(buf []byte) error {
-
-	out := make(map[string]interface{})
-
-	for k, val := range j.vars {
-		r, err := regexp.Compile(val)
+	for varName, regexStr := range vars {
+		re, err := regexp.Compile(regexStr)
 		if err != nil {
-			log.Println(j.name, ": bad regexp: ", err)
-			continue
+			return nil, fmt.Errorf("invalid regex for %s: %w", varName, err)
 		}
 
-		a := r.FindString(string(buf))
-		var value interface{}
-
-		c, ok := j.conv[k]
-		if ok {
-			value, err = expr.Eval(c, map[string]interface{}{k: a})
-			if err != nil {
-				log.Printf("%s: bad conversion for variable '%s' (%s): %s", j.name, k, a, err)
-				value = a
-			}
-		} else {
-			value = a
-		}
-		out[k] = value
+		match := re.FindString(text)
+		result[varName] = match // In a production app, you might try to parse this to float/int
 	}
 
-	j.store.Publish(j.name, out)
-
-	return nil
+	return result, nil
 }

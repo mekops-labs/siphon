@@ -1,19 +1,15 @@
 package parser
 
-import "github.com/mekops-labs/siphon/pkg/datastore"
-
+// Parser defines the interface for converting raw bytes into structured variables.
 type Parser interface {
-	Parse(buf []byte) error
-	AddVar(name string, val string)
-	AddConv(name string, val string)
+	// Parse takes the raw payload and a map of variable extraction rules (e.g., {"temp": "$.T"})
+	// and returns the extracted variables.
+	Parse(payload []byte, vars map[string]string) (map[string]any, error)
 }
 
-type Init func(name string, ds datastore.DataStore) Parser
-type registry map[string]Init
+// Registry holds the constructor functions for available parsers
+var Registry = make(map[string]func() Parser)
 
-/* Main registry of all available collector classes */
-var Registry = make(registry)
-
-func (c registry) Add(name string, constructor Init) {
-	c[name] = constructor
+func Register(name string, factory func() Parser) {
+	Registry[name] = factory
 }
