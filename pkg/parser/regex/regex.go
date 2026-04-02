@@ -23,8 +23,17 @@ func (p *regexParser) Parse(payload []byte, vars map[string]string) (map[string]
 			return nil, fmt.Errorf("invalid regex for %s: %w", varName, err)
 		}
 
-		match := re.FindString(text)
-		result[varName] = match // In a production app, you might try to parse this to float/int
+		match := re.FindStringSubmatch(text)
+		if match == nil {
+			result[varName] = "" // No match found, return empty string
+			continue
+		}
+
+		if len(match) > 1 {
+			result[varName] = match[1] // Use the first capturing group
+		} else {
+			result[varName] = match[0] // No capturing group, use the whole match
+		}
 	}
 
 	return result, nil
