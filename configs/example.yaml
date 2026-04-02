@@ -23,9 +23,7 @@ pipelines:
         temp: "$.temp"
     transform:
       temp: "temp * 10"
-    dispatch:
-      type: event
-      sinks:
-        - name: stdout
-          format: expr
-          spec: '{ "temperature": temp }'
+    sinks:
+      - name: stdout
+        format: expr
+        spec: '{ "temperature": temp }'

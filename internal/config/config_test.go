@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestLoad(t *testing.T) {
@@ -32,7 +31,6 @@ pipelines:
       status: "ok"
     dispatch:
       type: "event"
-      timeout: 5s
       sinks:
         - name: "test_sink"
           format: "json"
@@ -61,9 +59,6 @@ pipelines:
 		}
 
 		p := cfg.Pipelines[0]
-		if p.Name != "test_pipeline" || p.Dispatch.Timeout != 5*time.Second {
-			t.Errorf("Pipeline content mismatch: Name=%s, Timeout=%v", p.Name, p.Dispatch.Timeout)
-		}
 
 		if p.Parser.Type != "jsonpath" || p.Parser.Vars["val"] != "$.data" {
 			t.Errorf("Parser configuration mismatch")

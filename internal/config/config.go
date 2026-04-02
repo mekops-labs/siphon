@@ -28,32 +28,23 @@ type SinkConfig struct {
 
 // PipelineConfig defines the linear data flow
 type PipelineConfig struct {
-	Name        string `yaml:"name"`
-	From        string `yaml:"from,omitempty"`
-	SourceTopic string `yaml:"source_topic,omitempty"`
-	BusMode     string `yaml:"bus_mode,omitempty"` // "volatile" or "durable"
+	Name    string `yaml:"name"`
+	From    string `yaml:"from,omitempty"`
+	BusMode string `yaml:"bus_mode,omitempty"` // "volatile" or "durable"
 
-	Type        string   `yaml:"type,omitempty"` // "cron" or empty
-	Schedule    string   `yaml:"schedule,omitempty"`
-	WatchTopics []string `yaml:"watch_topics,omitempty"`
+	Type     string   `yaml:"type,omitempty"` // "cron" or empty
+	Schedule string   `yaml:"schedule,omitempty"`
+	Topics   []string `yaml:"topics,omitempty"`
 
 	Parser    *ParserConfig     `yaml:"parser,omitempty"`
 	Transform map[string]string `yaml:"transform,omitempty"`
 
-	Dispatch *DispatchConfig `yaml:"dispatch,omitempty"`
+	Sinks []PipelineSinkConfig `yaml:"sinks"`
 }
 
 type ParserConfig struct {
 	Type string            `yaml:"type"`
 	Vars map[string]string `yaml:"vars"`
-}
-
-type DispatchConfig struct {
-	Sinks []PipelineSinkConfig `yaml:"sinks"`
-}
-
-type TimeoutConfig struct {
-	Sinks []PipelineSinkConfig `yaml:"sinks"`
 }
 
 type PipelineSinkConfig struct {

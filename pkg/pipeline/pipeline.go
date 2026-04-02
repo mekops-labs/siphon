@@ -63,7 +63,8 @@ func (r *Runner) Start(ctx context.Context, pipelines []config.PipelineConfig) {
 			continue
 		}
 
-		log.Printf("Pipeline [%s]: Active and listening on '%s'", pCfg.Name, pCfg.SourceTopic)
+		// Event-driven pipeline
+		log.Printf("Pipeline [%s]: event-triggered type active", pCfg.Name)
 		go r.runEventPipeline(ctx, cp)
 	}
 }
@@ -99,59 +100,87 @@ func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 		cp.Transforms[varName] = prog
 	}
 
-	// Compile Sinks and Formatters
-	if cfg.Dispatch != nil {
-		for _, sCfg := range cfg.Dispatch.Sinks {
-			targetSink, ok := r.sinks[sCfg.Name]
-			if !ok {
-				return nil, fmt.Errorf("sink not found: %s", sCfg.Name)
-			}
-
-			cs := compiledSink{Name: sCfg.Name, Sink: targetSink, Format: sCfg.Format}
-
-			switch sCfg.Format {
-			case "expr":
-				exprOpts := []expr.Option{
-					expr.Env(map[string]any{}),
-					expr.AllowUndefinedVariables(),
-				}
-
-				prog, err := expr.Compile(sCfg.Spec, exprOpts...)
-				if err != nil {
-					return nil, fmt.Errorf("failed to compile sink expr: %w", err)
-				}
-				cs.ExprProg = prog
-			case "template":
-				tmpl, err := template.New(sCfg.Name).Parse(sCfg.Spec)
-				if err != nil {
-					return nil, fmt.Errorf("failed to compile sink template: %w", err)
-				}
-				cs.Template = tmpl
-			}
-
-			cp.Sinks = append(cp.Sinks, cs)
-		}
+	// Compile Sinks
+	var sinkConfigs []config.PipelineSinkConfig
+	if len(cfg.Sinks) > 0 {
+		sinkConfigs = cfg.Sinks // V2 config places sinks directly under cron
 	}
+
+	for _, sCfg := range sinkConfigs {
+		targetSink, ok := r.sinks[sCfg.Name]
+		if !ok {
+			return nil, fmt.Errorf("sink not found: %s", sCfg.Name)
+		}
+
+		cs := compiledSink{Name: sCfg.Name, Sink: targetSink, Format: sCfg.Format}
+
+		switch sCfg.Format {
+		case "expr":
+			exprOpts := []expr.Option{
+				expr.Env(map[string]any{}),
+				expr.AllowUndefinedVariables(),
+			}
+
+			prog, err := expr.Compile(sCfg.Spec, exprOpts...)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compile sink expr '%s': %w", cs.Name, err)
+			}
+			cs.ExprProg = prog
+		case "template":
+			tmpl, err := template.New(sCfg.Name).Parse(sCfg.Spec)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compile sink template '%s': %w", cs.Name, err)
+			}
+			cs.Template = tmpl
+		}
+
+		cp.Sinks = append(cp.Sinks, cs)
+	}
+
 	return cp, nil
 }
 
+// runEventPipeline listens to the bus and triggers processing for matching events
 func (r *Runner) runEventPipeline(ctx context.Context, cp *compiledPipeline) {
-	ch := r.bus.Subscribe(cp.Config.SourceTopic)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event := <-ch:
-			r.processEvent(cp, event)
-		}
+	for _, topic := range cp.Config.Topics {
+		log.Printf("Pipeline [%s]: Subscribing to topic '%s'", cp.Config.Name, topic)
+
+		ch := r.bus.Subscribe(topic)
+
+		// Spawn a listener for each topic this pipeline cares about
+		go func(t string, topicChan <-chan bus.Event) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case event := <-topicChan:
+					r.processEvent(cp, event)
+				}
+			}
+		}(topic, ch)
 	}
 }
 
+// runCronPipeline triggers on a schedule and gathers requested state
 func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
-	ch := r.bus.Subscribe(cp.Config.SourceTopic)
+	var allChannels []<-chan bus.Event
+	for _, topic := range cp.Config.Topics {
+		log.Printf("Pipeline [%s]: Subscribing to topic '%s'", cp.Config.Name, topic)
+
+		ch := r.bus.Subscribe(topic)
+		allChannels = append(allChannels, ch)
+	}
+
 	s := gocron.NewScheduler(time.UTC)
 	s.CronWithSeconds(cp.Config.Schedule).Do(func() {
-		r.processEvent(cp, <-ch)
+		for _, ch := range allChannels {
+			select {
+			case event := <-ch:
+				r.processEvent(cp, event)
+			case <-time.After(10 * time.Millisecond):
+				// No event received on this topic during this cron tick, continue to next topic
+			}
+		}
 	})
 
 	s.StartAsync()
@@ -185,36 +214,37 @@ func (r *Runner) processEvent(cp *compiledPipeline, event bus.Event) {
 		state[varName] = result
 	}
 
-	// 3. LOAD: Format and Dispatch to Sinks
+	// 3. LOAD (Dispatch immediately)
+	r.dispatchToSinks(cp, state, event.Payload)
+	event.Ack()
+}
+
+// dispatchToSinks is the shared formatter logic used by both Event and Cron pipelines
+func (r *Runner) dispatchToSinks(cp *compiledPipeline, state map[string]interface{}, rawPayload []byte) {
 	for _, cs := range cp.Sinks {
 		var outputBytes []byte
 
 		if cs.Format == "expr" {
-			// Run the expr to generate a data structure, then JSON marshal it
 			result, err := expr.Run(cs.ExprProg, state)
 			if err != nil {
-				log.Printf("Sink format expr error: %v", err)
+				log.Printf("Sink expr error [%s]: %v", cs.Name, err)
 				continue
 			}
 			outputBytes, _ = json.Marshal(result)
 
 		} else if cs.Format == "template" {
-			// Run standard Go text/template
 			var buf bytes.Buffer
 			if err := cs.Template.Execute(&buf, state); err != nil {
-				log.Printf("Sink template error: %v", err)
+				log.Printf("Sink template error [%s]: %v", cs.Name, err)
 				continue
 			}
 			outputBytes = buf.Bytes()
 		} else {
-			// Fallback: send raw payload
-			outputBytes = event.Payload
+			outputBytes = rawPayload // Fallback
 		}
 
 		if err := cs.Sink.Send(outputBytes); err != nil {
 			log.Printf("Sink Send error [%s]: %v", cs.Name, err)
 		}
 	}
-
-	event.Ack()
 }

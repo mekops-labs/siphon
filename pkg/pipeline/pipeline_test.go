@@ -58,15 +58,15 @@ func TestRunner_Start(t *testing.T) {
 
 	pipelines := []config.PipelineConfig{
 		{
-			Name:        "cron-test",
-			Type:        "cron",
-			Schedule:    "0/1 * * * * *", // Every second
-			SourceTopic: "timed",
+			Name:     "cron-test",
+			Type:     "cron",
+			Schedule: "0/1 * * * * *", // Every second
+			Topics:   []string{"timed"},
 		},
 		{
-			Name:        "event-test",
-			Type:        "event",
-			SourceTopic: "events",
+			Name:   "event-test",
+			Type:   "event",
+			Topics: []string{"events"},
 		},
 	}
 
@@ -120,10 +120,8 @@ func TestRunner_ProcessEvent(t *testing.T) {
 
 	cfg := config.PipelineConfig{
 		Name: "test-pipeline",
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{
-				{Name: "stdout"},
-			},
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "stdout"},
 		},
 	}
 
@@ -152,10 +150,8 @@ func TestRunner_Compile_MissingSink(t *testing.T) {
 	b := bus.NewMemoryBus()
 	r := NewRunner(b, make(map[string]sink.Sink))
 	cfg := config.PipelineConfig{
-		Name: "test-pipeline",
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{{Name: "non-existent"}},
-		},
+		Name:  "test-pipeline",
+		Sinks: []config.PipelineSinkConfig{{Name: "non-existent"}},
 	}
 	if _, err := r.compile(cfg); err == nil {
 		t.Error("expected error during compilation for missing sink")
@@ -171,12 +167,10 @@ func TestRunner_RunEventPipeline(t *testing.T) {
 	defer cancel()
 
 	cfg := config.PipelineConfig{
-		SourceTopic: "logs",
-		Name:        "logger",
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{
-				{Name: "test"},
-			},
+		Topics: []string{"logs"},
+		Name:   "logger",
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "test"},
 		},
 	}
 
@@ -226,17 +220,13 @@ func TestRunner_Compile_Errors(t *testing.T) {
 		{
 			"InvalidSinkExpr",
 			config.PipelineConfig{
-				Dispatch: &config.DispatchConfig{
-					Sinks: []config.PipelineSinkConfig{{Name: "stdout", Format: "expr", Spec: "{"}},
-				},
+				Sinks: []config.PipelineSinkConfig{{Name: "stdout", Format: "expr", Spec: "{"}},
 			},
 		},
 		{
 			"InvalidSinkTemplate",
 			config.PipelineConfig{
-				Dispatch: &config.DispatchConfig{
-					Sinks: []config.PipelineSinkConfig{{Name: "stdout", Format: "template", Spec: "{{bad}"}},
-				},
+				Sinks: []config.PipelineSinkConfig{{Name: "stdout", Format: "template", Spec: "{{bad}"}},
 			},
 		},
 	}
@@ -261,11 +251,9 @@ func TestRunner_ProcessEvent_FullETL(t *testing.T) {
 		Transform: map[string]string{
 			"doubled": "val * 2",
 		},
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{
-				{Name: "test", Format: "template", Spec: "Result: {{.doubled}}"},
-				{Name: "test", Format: "expr", Spec: "{out: doubled}"},
-			},
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "test", Format: "template", Spec: "Result: {{.doubled}}"},
+			{Name: "test", Format: "expr", Spec: "{out: doubled}"},
 		},
 	}
 
@@ -331,9 +319,7 @@ func TestRunner_ProcessEvent_TransformError(t *testing.T) {
 			"bad": "no_such_var + 1", // Should fail at runtime as env is empty
 			"ok":  "10",
 		},
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{{Name: "test", Format: "template", Spec: "{{.ok}}"}},
-		},
+		Sinks: []config.PipelineSinkConfig{{Name: "test", Format: "template", Spec: "{{.ok}}"}},
 	}
 	cp, _ := r.compile(cfg)
 
@@ -351,9 +337,7 @@ func TestRunner_ProcessEvent_RawFallback(t *testing.T) {
 	r := NewRunner(b, map[string]sink.Sink{"test": ms})
 
 	cfg := config.PipelineConfig{
-		Dispatch: &config.DispatchConfig{
-			Sinks: []config.PipelineSinkConfig{{Name: "test", Format: "raw"}},
-		},
+		Sinks: []config.PipelineSinkConfig{{Name: "test", Format: "raw"}},
 	}
 	cp, _ := r.compile(cfg)
 
