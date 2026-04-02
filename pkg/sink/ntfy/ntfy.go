@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
-	"text/template"
 	"time"
 
 	"github.com/mekops-labs/siphon/pkg/sink"
@@ -15,37 +13,33 @@ import (
 
 const defaultTimeout = 5 * time.Second
 
-type NtfyParams struct {
-	Url      string
-	Topic    string
-	Token    string
-	Title    string
-	Priority int
+type ntfyParams struct {
+	URL      string `mapstructure:"url"`
+	Topic    string `mapstructure:"topic"`
+	Token    string `mapstructure:"token"`
+	Title    string `mapstructure:"title"`
+	Priority int    `mapstructure:"priority"`
 }
 
-type ntfy struct {
-	url      string
-	topic    string
-	token    string
-	title    string
-	priority int
+type ntfySink struct {
+	params ntfyParams
+	client *http.Client
 }
 
-var _ sink.Sink = (*ntfy)(nil)
+// Ensure ntfySink implements sink.Sink
+var _ sink.Sink = (*ntfySink)(nil)
 
 func init() {
 	sink.Registry.Add("ntfy", New)
 }
 
-func New(p any) (sink.Sink, error) {
-
-	var opt NtfyParams
-
-	if err := mapstructure.Decode(p, &opt); err != nil {
-		return nil, err
+func New(params any) (sink.Sink, error) {
+	var opt ntfyParams
+	if err := mapstructure.Decode(params, &opt); err != nil {
+		return nil, fmt.Errorf("failed to decode ntfy sink params: %w", err)
 	}
 
-	if opt.Url == "" || opt.Topic == "" {
+	if opt.URL == "" || opt.Topic == "" {
 		return nil, fmt.Errorf("ntfy sink: url and topic are required fields")
 	}
 
@@ -53,75 +47,42 @@ func New(p any) (sink.Sink, error) {
 		opt.Priority = 3
 	}
 
-	return &ntfy{
-		url:      opt.Url,
-		topic:    opt.Topic,
-		token:    opt.Token,
-		title:    opt.Title,
-		priority: opt.Priority,
+	return &ntfySink{
+		params: opt,
+		client: &http.Client{Timeout: defaultTimeout},
 	}, nil
 }
 
-func reformat(in string) (string, error) {
-	fMap := template.FuncMap{
-		"now": func(f string) string { return time.Now().Format(f) },
-	}
-
-	tmpl, err := template.New("title").Funcs(fMap).Parse(in)
+func (s *ntfySink) Send(b []byte) error {
+	targetURL, err := url.JoinPath(s.params.URL, s.params.Topic)
 	if err != nil {
-		return "", err
+		return fmt.Errorf("failed to construct target URL: %w", err)
 	}
 
-	var buf string
-	title := bytes.NewBufferString(buf)
-
-	// Run the template to verify the output.
-	err = tmpl.Execute(title, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return title.String(), nil
-}
-
-func (n *ntfy) Send(b []byte) error {
-
-	url, err := url.JoinPath(n.url, n.topic)
+	req, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(b))
 	if err != nil {
 		return err
 	}
 
-	r, err := http.NewRequest("POST", url, bytes.NewBuffer(b))
+	// Add headers based on config
+	if s.params.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+s.params.Token)
+	}
+	if s.params.Title != "" {
+		req.Header.Set("Title", s.params.Title)
+	}
+	if s.params.Priority > 0 {
+		req.Header.Set("Priority", fmt.Sprintf("%d", s.params.Priority))
+	}
+
+	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
-	}
-
-	if n.token != "" {
-		r.Header.Add("Authorization", "Bearer "+n.token)
-	}
-
-	if n.title != "" {
-		title, err := reformat(n.title)
-		if err != nil {
-			return err
-		}
-
-		r.Header.Add("Title", title)
-	}
-
-	if n.priority != 0 {
-		r.Header.Add("Priority", strconv.Itoa(n.priority))
-	}
-
-	client := &http.Client{Timeout: defaultTimeout}
-	resp, err := client.Do(r)
-	if err != nil {
-		return err
+		return fmt.Errorf("ntfy request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("request failed, code: %d", resp.StatusCode)
+		return fmt.Errorf("ntfy returned non-2xx status: %d", resp.StatusCode)
 	}
 
 	return nil
