@@ -7,8 +7,6 @@ import (
 	_ "github.com/mekops-labs/siphon/pkg/collector/file"
 	_ "github.com/mekops-labs/siphon/pkg/collector/mqtt"
 	_ "github.com/mekops-labs/siphon/pkg/collector/shell"
-	_ "github.com/mekops-labs/siphon/pkg/dispatcher/cron"
-	_ "github.com/mekops-labs/siphon/pkg/dispatcher/event"
 	_ "github.com/mekops-labs/siphon/pkg/parser/jsonpath"
 	_ "github.com/mekops-labs/siphon/pkg/parser/regex"
 	_ "github.com/mekops-labs/siphon/pkg/sink/gotify"
