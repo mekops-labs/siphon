@@ -108,13 +108,13 @@ func TestMemoryBus_Publish_Overflow(t *testing.T) {
 	topic := "overflow"
 	ch := bus.Subscribe(topic)
 
-	// Buffer size is 100. Publish 101 events.
-	for i := 0; i < 101; i++ {
+	// Buffer size is 1. Publish 2 events.
+	for i := 0; i < 2; i++ {
 		_ = bus.Publish(topic, []byte{byte(i)})
 	}
 
-	if len(ch) != 100 {
-		t.Errorf("expected channel length 100, got %d", len(ch))
+	if len(ch) != 1 {
+		t.Errorf("expected channel length 1, got %d", len(ch))
 	}
 
 	// The first event (byte(0)) should have been dropped.
