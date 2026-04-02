@@ -62,6 +62,20 @@ func main() {
 		log.Printf("added sink: %s, type: %s", name, sinkCfg.Type)
 	}
 
+	// 4. Wire Collectors to Pipelines based on 'from' and 'source_topic'
+	for _, pCfg := range cfg.Pipelines {
+		// Only event-driven pipelines have a 'From' and 'SourceTopic'
+		if pCfg.From != "" && pCfg.SourceTopic != "" {
+			c, ok := collectors[pCfg.From]
+			if !ok {
+				log.Fatalf("Fatal Error: Pipeline '%s' references unknown collector '%s'", pCfg.Name, pCfg.From)
+			}
+			// Tell the specific collector to start listening to this topic/file/command
+			c.RegisterTopic(pCfg.SourceTopic)
+			log.Printf("Wired pipeline [%s] -> collector [%s] (topic: %s)", pCfg.Name, pCfg.From, pCfg.SourceTopic)
+		}
+	}
+
 	// 5. Start the Pipeline Runner
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
