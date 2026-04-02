@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"text/template"
 	"time"
 
@@ -147,12 +148,10 @@ func (r *Runner) runEventPipeline(ctx context.Context, cp *compiledPipeline) {
 }
 
 func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
+	ch := r.bus.Subscribe(cp.Config.SourceTopic)
 	s := gocron.NewScheduler(time.UTC)
 	s.CronWithSeconds(cp.Config.Schedule).Do(func() {
-		r.processEvent(cp, bus.Event{
-			Ack:  func() {},
-			Nack: func() {},
-		})
+		r.processEvent(cp, <-ch)
 	})
 
 	s.StartAsync()
@@ -173,9 +172,7 @@ func (r *Runner) processEvent(cp *compiledPipeline, event bus.Event) {
 			return
 		}
 		// Merge extracted vars into state
-		for k, v := range extracted {
-			state[k] = v
-		}
+		maps.Copy(state, extracted)
 	}
 
 	// 2. TRANSFORM: Run expr formulas

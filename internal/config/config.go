@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/mekops-labs/siphon/internal/utils"
@@ -50,10 +49,7 @@ type ParserConfig struct {
 }
 
 type DispatchConfig struct {
-	Type      string               `yaml:"type"`
-	Timeout   time.Duration        `yaml:"timeout,omitempty"`
-	OnTimeout *TimeoutConfig       `yaml:"on_timeout,omitempty"`
-	Sinks     []PipelineSinkConfig `yaml:"sinks"`
+	Sinks []PipelineSinkConfig `yaml:"sinks"`
 }
 
 type TimeoutConfig struct {

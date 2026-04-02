@@ -9,7 +9,7 @@ type DeliveryMode int
 
 const (
 	ModeVolatile DeliveryMode = iota
-	ModeDurable               // Placeholder for future bbolt WAL implementation
+	ModeDurable
 )
 
 // Event is the standard unit of data moving through Siphon
@@ -89,7 +89,7 @@ func (b *MemoryBus) Subscribe(topic string) <-chan Event {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	ch := make(chan Event, 100) // 100 event buffer per subscriber
+	ch := make(chan Event, 1) // Buffer size 1 for simple backpressure handling
 	b.subscribers[topic] = append(b.subscribers[topic], ch)
 	return ch
 }
