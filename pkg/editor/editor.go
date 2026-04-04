@@ -27,6 +27,7 @@ func Start(port int, configPath string) {
 			data, err := os.ReadFile(configPath)
 			if err != nil {
 				http.Error(w, "Failed to read config", http.StatusInternalServerError)
+				log.Printf("Editor: Failed to read config (%s): %v", configPath, err)
 				return
 			}
 			w.Header().Set("Content-Type", "text/yaml")
@@ -36,12 +37,13 @@ func Start(port int, configPath string) {
 			body, err := io.ReadAll(r.Body)
 			if err != nil || len(body) == 0 {
 				http.Error(w, "Invalid request body", http.StatusBadRequest)
+				log.Printf("Editor: Failed to read request body: %v", err)
 				return
 			}
 
 			// Save the file
 			if err := os.WriteFile(configPath, body, 0644); err != nil {
-				log.Printf("Editor: Failed to write config: %v", err)
+				log.Printf("Editor: Failed to write config (%s): %v", configPath, err)
 				http.Error(w, "Failed to save file", http.StatusInternalServerError)
 				return
 			}
@@ -56,7 +58,7 @@ func Start(port int, configPath string) {
 	})
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
-	log.Printf("Starting Embedded Editor on http://%s", addr)
+	log.Printf("Starting embedded config editor on http://%s", addr)
 
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("Editor server crashed: %v", err)
