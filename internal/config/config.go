@@ -18,6 +18,7 @@ type Config struct {
 
 type CollectorConfig struct {
 	Type   string                 `yaml:"type"`
+	Topics map[string]string      `yaml:"topics"`
 	Params map[string]interface{} `yaml:"params"` // Generic params for module
 }
 
@@ -29,7 +30,6 @@ type SinkConfig struct {
 // PipelineConfig defines the linear data flow
 type PipelineConfig struct {
 	Name    string `yaml:"name"`
-	From    string `yaml:"from,omitempty"`
 	BusMode string `yaml:"bus_mode,omitempty"` // "volatile" or "durable"
 
 	Type     string   `yaml:"type,omitempty"` // "cron" or empty

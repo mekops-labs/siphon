@@ -45,7 +45,7 @@ func main() {
 	// 2. Initialize the Event Bus
 	eventBus := bus.NewMemoryBus()
 
-	// 2. Initialize Collectors
+	// 3. Initialize Collectors
 	collectors := make(map[string]collector.Collector)
 	for name, colCfg := range cfg.Collectors {
 		collectorInit, ok := collector.Registry[colCfg.Type]
@@ -53,11 +53,19 @@ func main() {
 			log.Printf("unknown collector type: %s", colCfg.Type)
 			continue
 		}
-		collectors[name] = collectorInit(colCfg.Params)
-		log.Printf("added collector: %s, type: %s", name, colCfg.Type)
+
+		c := collectorInit(colCfg.Params)
+
+		// Register all aliases defined in config.yaml for this collector
+		for alias, rawTopic := range colCfg.Topics {
+			c.RegisterTopic(alias, rawTopic)
+			log.Printf("Collector [%s] registered alias '%s' for '%s'", name, alias, rawTopic)
+		}
+
+		collectors[name] = c
 	}
 
-	// 3. Initialize Sinks
+	// 4. Initialize Sinks
 	sinks := make(map[string]sink.Sink)
 	for name, sinkCfg := range cfg.Sinks {
 		sinkInit, ok := sink.Registry[sinkCfg.Type]
@@ -74,22 +82,6 @@ func main() {
 		log.Printf("added sink: %s, type: %s", name, sinkCfg.Type)
 	}
 
-	// 4. Wire Collectors to Pipelines based on 'from' and 'source_topic'
-	for _, pCfg := range cfg.Pipelines {
-		// If 'From' is defined, tell the collector to listen to these topics
-		if pCfg.From != "" && len(pCfg.Topics) > 0 {
-			c, ok := collectors[pCfg.From]
-			if !ok {
-				log.Fatalf("Fatal Error: Pipeline '%s' references unknown collector '%s'", pCfg.Name, pCfg.From)
-			}
-
-			for _, topic := range pCfg.Topics {
-				c.RegisterTopic(topic)
-				log.Printf("Wired pipeline [%s] -> collector [%s] (topic: %s)", pCfg.Name, pCfg.From, topic)
-			}
-		}
-	}
-
 	// 5. Start the Pipeline Runner
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -102,7 +94,7 @@ func main() {
 		go c.Start(eventBus)
 	}
 
-	// Wait for interrupt
+	// 7. Wait for interrupt
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	<-c

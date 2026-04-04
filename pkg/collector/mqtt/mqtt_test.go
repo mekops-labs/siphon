@@ -28,8 +28,8 @@ func TestMqttSource_New(t *testing.T) {
 func TestMqttSource_RegisterTopic(t *testing.T) {
 	col := New(map[string]interface{}{"url": "tcp://localhost:1883"}).(*mqttSource)
 
-	col.RegisterTopic("sensors/temp")
-	col.RegisterTopic("sensors/hum")
+	col.RegisterTopic("temp", "sensors/temp")
+	col.RegisterTopic("humidity", "sensors/hum")
 
 	if len(col.topics) != 2 {
 		t.Errorf("expected 2 topics, got %d", len(col.topics))

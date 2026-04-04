@@ -6,7 +6,7 @@ import "github.com/mekops-labs/siphon/pkg/bus"
 type Collector interface {
 	Start(b bus.Bus)
 	End()
-	RegisterTopic(topic string) // The source_topic from config.yaml
+	RegisterTopic(name string, value string)
 }
 
 type Init func(params any) Collector

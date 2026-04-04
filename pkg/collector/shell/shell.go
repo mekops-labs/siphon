@@ -18,7 +18,7 @@ type ShellParams struct {
 
 type shellSource struct {
 	params   ShellParams
-	commands []string
+	commands map[string]string
 	lock     sync.Mutex
 	bus      bus.Bus
 
@@ -49,19 +49,18 @@ func New(p any) collector.Collector {
 
 	return &shellSource{
 		params:   opt,
-		commands: make([]string, 0),
+		commands: make(map[string]string),
 		ctx:      ctx,
 		cancel:   cancel,
 	}
 }
 
-func (s *shellSource) RegisterTopic(topic string) {
+func (s *shellSource) RegisterTopic(name string, value string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
 	// For the shell collector, the "topic" is the actual shell command
-	s.commands = append(s.commands, topic)
-	log.Printf("Shell collector registered command: %s", topic)
+	s.commands[name] = value
 }
 
 func (s *shellSource) Start(b bus.Bus) {
@@ -90,7 +89,7 @@ func (s *shellSource) executeCommands() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	for _, cmdStr := range s.commands {
+	for topic, cmdStr := range s.commands {
 		// Use "sh -c" to support piping and shell builtins (like awk/grep)
 		cmd := exec.CommandContext(s.ctx, "sh", "-c", cmdStr)
 
@@ -101,8 +100,8 @@ func (s *shellSource) executeCommands() {
 		}
 
 		// Publish standard output to the Event Bus
-		if err := s.bus.Publish(cmdStr, output); err != nil {
-			log.Printf("Shell Bus Publish Error [%s]: %v", cmdStr, err)
+		if err := s.bus.Publish(topic, output); err != nil {
+			log.Printf("Shell Bus Publish Error [%s]: %v", topic, err)
 		}
 	}
 }

@@ -1,29 +1,32 @@
 version: 2
 
 collectors:
-  mqtt:
-    type: mqtt
+  in:
+    type: shell
     params:
-      url: ssl://mqtt:8883
-      user: user
-      pass: pass
+      interval: 1
+    topics:
+      temp: "echo '{ \"temp\": 23.5, \"ts\":' $(date +%s) '}'"
 
 sinks:
   stdout:
     type: stdout
 
 pipelines:
-  - name: process_outside_weather
-    from: mqtt
-    source_topic: "/topic1"
+  - name: process_temp
+    type: cron
+    schedule: "@every 5s"
+    topics:
+      - temp
     bus_mode: volatile
     parser:
       type: jsonpath
       vars:
         temp: "$.temp"
+        ts:   "$.ts"
     transform:
       temp: "temp * 10"
     sinks:
       - name: stdout
         format: expr
-        spec: '{ "temperature": temp }'
+        spec: '{ "temperature": temp, "timestamp": ts }'

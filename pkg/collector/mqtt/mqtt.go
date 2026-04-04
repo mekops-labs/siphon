@@ -15,7 +15,7 @@ import (
 type mqttSource struct {
 	client      mqtt.Client
 	mqttOptions *mqtt.ClientOptions
-	topics      []string // List of topics requested by the V2 Pipelines
+	topics      map[string]string // List of topics requested by the V2 Pipelines
 	lock        sync.Mutex
 	bus         bus.Bus // Reference to the central Event Bus
 }
@@ -45,7 +45,7 @@ func New(p any) collector.Collector {
 	}
 
 	m := &mqttSource{
-		topics: make([]string, 0),
+		topics: make(map[string]string),
 	}
 
 	opts := mqtt.NewClientOptions()
@@ -80,12 +80,11 @@ func (m *mqttSource) subscribe() {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for _, topic := range m.topics {
+	for busTopic, topic := range m.topics {
 		// Subscribe and push raw payloads directly to the Event Bus
 		if token := m.client.Subscribe(topic, 0, func(c mqtt.Client, msg mqtt.Message) {
 
-			// The Collector acts as a pure bridge to the Bus
-			if err := m.bus.Publish(msg.Topic(), msg.Payload()); err != nil {
+			if err := m.bus.Publish(busTopic, msg.Payload()); err != nil {
 				log.Printf("MQTT Bus Publish Error (%s): %v", msg.Topic(), err)
 			}
 
@@ -109,10 +108,10 @@ func (m *mqttSource) End() {
 	m.client.Disconnect(100)
 }
 
-// RegisterTopic replaces AddDataSource. It tells the collector what to listen for based on pipeline configs.
-func (m *mqttSource) RegisterTopic(topic string) {
+// RegisterTopic tells the collector what to listen for based on pipeline configs.
+func (m *mqttSource) RegisterTopic(name string, value string) {
 	m.lock.Lock()
-	m.topics = append(m.topics, topic)
+	m.topics[name] = value
 	m.lock.Unlock()
 
 	// If already connected (e.g., config reload), subscribe immediately

@@ -18,7 +18,7 @@ type FileParams struct {
 
 type fileSource struct {
 	params FileParams
-	paths  []string
+	paths  map[string]string
 	lock   sync.Mutex
 	bus    bus.Bus
 
@@ -50,19 +50,17 @@ func New(p any) collector.Collector {
 
 	return &fileSource{
 		params: opt,
-		paths:  make([]string, 0),
+		paths:  make(map[string]string),
 		ctx:    ctx,
 		cancel: cancel,
 	}
 }
 
-func (f *fileSource) RegisterTopic(topic string) {
+func (f *fileSource) RegisterTopic(name string, value string) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	// For the file collector, the "topic" is the file path
-	f.paths = append(f.paths, topic)
-	log.Printf("File collector registered path: %s", topic)
+	f.paths[name] = value
 }
 
 func (f *fileSource) Start(b bus.Bus) {
@@ -92,7 +90,7 @@ func (f *fileSource) readFiles() {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	for _, path := range f.paths {
+	for topic, path := range f.paths {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			log.Printf("File read error (%s): %v", path, err)
@@ -100,8 +98,8 @@ func (f *fileSource) readFiles() {
 		}
 
 		// Publish raw file contents to the Event Bus
-		if err := f.bus.Publish(path, data); err != nil {
-			log.Printf("File Bus Publish Error (%s): %v", path, err)
+		if err := f.bus.Publish(topic, data); err != nil {
+			log.Printf("File Bus Publish Error (%s): %v", topic, err)
 		}
 	}
 }

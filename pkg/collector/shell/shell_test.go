@@ -40,16 +40,18 @@ func TestShellSource(t *testing.T) {
 	}
 
 	cmd := "echo 'hello shell'"
-	col.RegisterTopic(cmd)
+	col.RegisterTopic("test", cmd)
 	col.Start(b)
 	defer col.End()
 
 	select {
 	case msg := <-b.published:
-		if msg.topic != cmd {
-			t.Errorf("expected topic %s, got %s", cmd, msg.topic)
+		if msg.topic != "test" {
+			t.Errorf("expected topic %s, got %s", "test", msg.topic)
 		}
-		// Shell output usually includes a newline
+		if string(msg.payload) != "hello shell\n" {
+			t.Errorf("expected payload %s, got %s", "hello shell", string(msg.payload))
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for shell execution")
 	}

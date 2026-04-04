@@ -49,14 +49,14 @@ func TestFileSource(t *testing.T) {
 		t.Fatal("failed to create collector")
 	}
 
-	col.RegisterTopic(tmpFile)
+	col.RegisterTopic("test", tmpFile)
 	col.Start(b)
 	defer col.End()
 
 	select {
 	case msg := <-b.published:
-		if msg.topic != tmpFile {
-			t.Errorf("expected topic %s, got %s", tmpFile, msg.topic)
+		if msg.topic != "test" {
+			t.Errorf("expected topic %s, got %s", "test", msg.topic)
 		}
 		if string(msg.payload) != string(content) {
 			t.Errorf("expected payload %s, got %s", string(content), string(msg.payload))
