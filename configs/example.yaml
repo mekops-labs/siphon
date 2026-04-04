@@ -7,15 +7,33 @@ collectors:
       interval: 1
     topics:
       temp: "echo '{ \"temp\": 23.5, \"ts\":' $(date +%s) '}'"
+  file:
+    type: file
+    params:
+      interval: 10
+    topics:
+      uptime: "/proc/uptime"
 
 sinks:
   stdout:
     type: stdout
 
 pipelines:
+  - name: process_uptime
+    topics:
+      - uptime
+    bus_mode: volatile
+    parser:
+      type: regex
+      vars:
+        uptime: "^(\\d+\\.\\d+)\\s"
+    transform:
+      uptime: "int(float(uptime))"
+    sinks:
+      - name: stdout
+        format: expr
+        spec: '{ "uptime_seconds": uptime }'
   - name: process_temp
-    type: cron
-    schedule: "@every 5s"
     topics:
       - temp
     bus_mode: volatile

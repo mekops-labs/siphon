@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/sink"
 	"github.com/mitchellh/mapstructure"
 )
@@ -34,7 +35,7 @@ func init() {
 	sink.Registry.Add("iotplotter", New)
 }
 
-func New(params any) (sink.Sink, error) {
+func New(params any, _ bus.Bus) (sink.Sink, error) {
 	var opt plotterParams
 	if err := mapstructure.Decode(params, &opt); err != nil {
 		return nil, fmt.Errorf("failed to decode iotplotter params: %w", err)

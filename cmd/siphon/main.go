@@ -73,7 +73,7 @@ func main() {
 			log.Printf("unknown sink type: %s", sinkCfg.Type)
 			continue
 		}
-		s, err := sinkInit(sinkCfg.Params)
+		s, err := sinkInit(sinkCfg.Params, eventBus)
 		if err != nil {
 			log.Printf("can't initialize sink %s: %v", name, err)
 			continue

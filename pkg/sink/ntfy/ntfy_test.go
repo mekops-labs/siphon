@@ -37,7 +37,7 @@ func TestNtfySink_Send(t *testing.T) {
 		"priority": 4,
 	}
 
-	s, err := New(params)
+	s, err := New(params, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestNtfySink_New_Validation(t *testing.T) {
 		{map[string]any{"topic": "t"}},
 	}
 	for _, tt := range tests {
-		if _, err := New(tt.params); err == nil {
+		if _, err := New(tt.params, nil); err == nil {
 			t.Errorf("expected error for params: %v", tt.params)
 		}
 	}

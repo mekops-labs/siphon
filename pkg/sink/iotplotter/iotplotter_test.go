@@ -36,7 +36,7 @@ func TestPlotterSink_Send(t *testing.T) {
 		"feed":   "test-feed",
 	}
 
-	s, err := New(params)
+	s, err := New(params, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestPlotterSink_Send(t *testing.T) {
 
 func TestPlotterSink_New_Validation(t *testing.T) {
 	params := map[string]interface{}{"apikey": "k"} // missing feed
-	_, err := New(params)
+	_, err := New(params, nil)
 	if err == nil {
 		t.Error("expected error when feed is missing")
 	}

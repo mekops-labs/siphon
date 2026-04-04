@@ -1,5 +1,7 @@
 package sink
 
+import "github.com/mekops-labs/siphon/pkg/bus"
+
 type Sink interface {
 	Send(b []byte) error
 }
@@ -10,7 +12,7 @@ type SinkCfg struct {
 	Spec string
 }
 
-type Init func(params any) (Sink, error)
+type Init func(params any, eventBus bus.Bus) (Sink, error)
 type registry map[string]Init
 
 var Registry = make(registry)

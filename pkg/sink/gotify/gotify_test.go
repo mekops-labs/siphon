@@ -45,7 +45,7 @@ func TestGotifySink_Send(t *testing.T) {
 		"priority": 5,
 	}
 
-	s, err := New(params)
+	s, err := New(params, nil)
 	if err != nil {
 		t.Fatalf("failed to create sink: %v", err)
 	}
@@ -57,12 +57,12 @@ func TestGotifySink_Send(t *testing.T) {
 }
 
 func TestGotifySink_New_Errors(t *testing.T) {
-	_, err := New(map[string]interface{}{"url": "http://localhost"})
+	_, err := New(map[string]interface{}{"url": "http://localhost"}, nil)
 	if err == nil {
 		t.Error("expected error when token is missing")
 	}
 
-	_, err = New(map[string]interface{}{"token": "tok"})
+	_, err = New(map[string]interface{}{"token": "tok"}, nil)
 	if err == nil {
 		t.Error("expected error when url is missing")
 	}

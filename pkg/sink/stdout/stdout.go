@@ -3,6 +3,7 @@ package stdout
 import (
 	"fmt"
 
+	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/sink"
 )
 
@@ -14,7 +15,7 @@ func init() {
 	sink.Registry.Add("stdout", New)
 }
 
-func New(params any) (sink.Sink, error) {
+func New(_ any, _ bus.Bus) (sink.Sink, error) {
 	return &stdout{}, nil
 }
 

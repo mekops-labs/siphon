@@ -42,7 +42,7 @@ func TestWindySink_Send(t *testing.T) {
 		"id":     123,
 	}
 
-	s, err := New(params)
+	s, err := New(params, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestWindySink_Send(t *testing.T) {
 }
 
 func TestWindySink_New_Validation(t *testing.T) {
-	if _, err := New(map[string]any{}); err == nil {
+	if _, err := New(map[string]any{}, nil); err == nil {
 		t.Error("expected error for missing apikey")
 	}
 }
