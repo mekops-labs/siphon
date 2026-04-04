@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"log"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	_ "github.com/mekops-labs/siphon/internal/modules"
 	"github.com/mekops-labs/siphon/pkg/bus"
 	"github.com/mekops-labs/siphon/pkg/collector"
+	"github.com/mekops-labs/siphon/pkg/editor"
 	"github.com/mekops-labs/siphon/pkg/pipeline"
 	"github.com/mekops-labs/siphon/pkg/sink"
 )
@@ -18,14 +20,24 @@ import (
 var version = "unknown"
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatal("need config file!")
+	// Add an optional flag for the editor port
+	editorPort := flag.Int("editor-port", 0, "Enable the web-based config editor on this port (e.g. 8099)")
+	flag.Parse()
+
+	// Read the config file path from the remaining args
+	if flag.NArg() < 1 {
+		log.Fatal("need config file path as argument! Usage: siphon [flags] <config.yaml>")
+	}
+	configPath := flag.Arg(0)
+
+	log.Print("Starting Siphon v. ", version)
+
+	if *editorPort > 0 {
+		go editor.Start(*editorPort, configPath)
 	}
 
-	log.Print("Starting Siphon v", version)
-
 	// 1. Load Config
-	cfg, err := config.Load(os.Args[1])
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatal(err)
 	}

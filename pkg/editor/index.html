@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Siphon Config Editor</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #1e1e1e; }
+        #header { background: #2c3e50; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
+        #header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        #editor { flex-grow: 1; }
+        button { background: #3498db; border: none; color: white; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+        button:hover { background: #2980b9; }
+        #status { margin-left: 15px; font-size: 14px; color: #f1c40f; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>
+            Siphon Pipeline Editor
+            <span id="status"></span>
+        </h1>
+        <button onclick="saveConfig()">Save Configuration</button>
+    </div>
+    <div id="editor">Loading configuration...</div>
+
+    <script>
+        // Initialize Ace Editor
+        const editor = ace.edit("editor");
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/yaml");
+        editor.setFontSize(14);
+        editor.setShowPrintMargin(false);
+
+        // Fetch config.yaml from the Go server
+        function loadConfig() {
+            fetch('/api/config')
+                .then(res => {
+                    if (!res.ok) throw new Error('Failed to load');
+                    return res.text();
+                })
+                .then(data => {
+                    editor.setValue(data, -1);
+                })
+                .catch(err => {
+                    document.getElementById('status').innerText = '⚠️ Error loading config.yaml';
+                });
+        }
+
+        // POST the updated config back to the Go server
+        function saveConfig() {
+            const content = editor.getValue();
+            const status = document.getElementById('status');
+            status.innerText = 'Saving...';
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: content
+            })
+            .then(res => {
+                if (res.ok) {
+                    status.style.color = '#2ecc71';
+                    status.innerText = '✔ Saved successfully! (Restart add-on to apply)';
+                } else {
+                    throw new Error('Save failed');
+                }
+                setTimeout(() => status.innerText = '', 4000);
+            })
+            .catch(err => {
+                status.style.color = '#e74c3c';
+                status.innerText = '✖ Error saving configuration';
+            });
+        }
+
+        // Load initially
+        loadConfig();
+    </script>
+</body>
+</html>
