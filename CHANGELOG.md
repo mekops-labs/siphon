@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0-rc1 (2026-04-04)
+
+- changed to config v2 version
+- added event bus
+- reworked internal architecture
+- added integrated config editor based on ace.js
+
 ## 0.3.1 (2026-01-25)
 
 - rebrand the `data-collector` to `Siphon`
