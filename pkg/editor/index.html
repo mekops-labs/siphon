@@ -34,7 +34,7 @@
 
         // Fetch config.yaml from the Go server
         function loadConfig() {
-            fetch('/api/config')
+            fetch('./api/config')
                 .then(res => {
                     if (!res.ok) throw new Error('Failed to load');
                     return res.text();
@@ -53,7 +53,7 @@
             const status = document.getElementById('status');
             status.innerText = 'Saving...';
 
-            fetch('/api/config', {
+            fetch('./api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: content
