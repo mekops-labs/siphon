@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0-rc2 (2026-04-04)
+
+- added statful cron pipelines support
+
 ## 0.4.0-rc1 (2026-04-04)
 
 - changed to config v2 version
