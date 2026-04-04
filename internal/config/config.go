@@ -29,8 +29,9 @@ type SinkConfig struct {
 
 // PipelineConfig defines the linear data flow
 type PipelineConfig struct {
-	Name    string `yaml:"name"`
-	BusMode string `yaml:"bus_mode,omitempty"` // "volatile" or "durable"
+	Name     string `yaml:"name"`
+	BusMode  string `yaml:"bus_mode,omitempty"` // "volatile" or "durable"
+	Stateful bool   `yaml:"stateful,omitempty"`
 
 	Type     string   `yaml:"type,omitempty"` // "cron" or empty
 	Schedule string   `yaml:"schedule,omitempty"`

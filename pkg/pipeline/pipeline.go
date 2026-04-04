@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"sync"
 	"text/template"
 	"time"
 
@@ -34,6 +35,8 @@ type compiledPipeline struct {
 	Parser     parser.Parser
 	Transforms map[string]*vm.Program
 	Sinks      []compiledSink
+	state      map[string]interface{} // Pipeline-specific state
+	lock       sync.Mutex             // Lock for pipeline-specific state
 }
 
 type Runner struct {
@@ -74,6 +77,7 @@ func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 	cp := &compiledPipeline{
 		Config:     cfg,
 		Transforms: make(map[string]*vm.Program),
+		state:      make(map[string]interface{}), // Initialize state during compilation
 	}
 
 	// Setup Parser
@@ -154,7 +158,10 @@ func (r *Runner) runEventPipeline(ctx context.Context, cp *compiledPipeline) {
 				case <-ctx.Done():
 					return
 				case event := <-topicChan:
-					r.processEvent(cp, event)
+					state := r.updateStateFromEvent(cp, event) // Update state from event
+					if state != nil {
+						r.dispatchState(cp, state) // Dispatch the specific state snapshot
+					}
 				}
 			}
 		}(topic, ch)
@@ -163,6 +170,38 @@ func (r *Runner) runEventPipeline(ctx context.Context, cp *compiledPipeline) {
 
 // runCronPipeline triggers on a schedule and gathers requested state
 func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
+	if cp.Config.Stateful {
+		// For stateful cron pipelines, we need to continuously consume events
+		// and update the pipeline's state. The cron job then dispatches this state.
+		for _, topic := range cp.Config.Topics {
+			log.Printf("Pipeline [%s]: Subscribing to topic '%s' for state accumulation", cp.Config.Name, topic)
+			ch := r.bus.Subscribe(topic)
+			go func(topic string, topicChan <-chan bus.Event) {
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case event := <-topicChan:
+						// Process event to update the pipeline's state
+						r.updateStateFromEvent(cp, event) // This handles Ack/Nack
+					}
+				}
+			}(topic, ch)
+		}
+
+		// The cron job now only triggers the dispatch of the accumulated state
+		s := gocron.NewScheduler(time.UTC)
+		s.CronWithSeconds(cp.Config.Schedule).Do(func() {
+			r.dispatchAccumulatedState(cp)
+		})
+		s.StartAsync()
+		<-ctx.Done()
+		s.Stop()
+		return // Exit after setting up state accumulation and cron dispatch
+	}
+
+	// Original logic for stateless cron pipelines
+	// This part processes events that are available at the time of the cron tick.
 	var allChannels []<-chan bus.Event
 	for _, topic := range cp.Config.Topics {
 		log.Printf("Pipeline [%s]: Subscribing to topic '%s'", cp.Config.Name, topic)
@@ -175,8 +214,11 @@ func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
 	s.CronWithSeconds(cp.Config.Schedule).Do(func() {
 		for _, ch := range allChannels {
 			select {
-			case event := <-ch:
-				r.processEvent(cp, event)
+			case event := <-ch: // For stateless cron, process and dispatch each event individually
+				state := r.updateStateFromEvent(cp, event)
+				if state != nil {
+					r.dispatchState(cp, state)
+				}
 			case <-time.After(10 * time.Millisecond):
 				// No event received on this topic during this cron tick, continue to next topic
 			}
@@ -188,20 +230,40 @@ func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
 	s.Stop()
 }
 
-// processEvent executes the core (E)xtract(T)ransform(L)oad logic
-func (r *Runner) processEvent(cp *compiledPipeline, event bus.Event) {
-	state := make(map[string]interface{})
+// updateStateFromEvent processes an incoming event and updates the pipeline's state.
+// It does not perform dispatch.
+func (r *Runner) updateStateFromEvent(cp *compiledPipeline, event bus.Event) map[string]interface{} {
+	var state map[string]interface{}
+
+	if cp.Config.Stateful {
+		cp.lock.Lock()
+		defer cp.lock.Unlock()
+		state = cp.state
+	} else {
+		state = make(map[string]interface{})
+	}
 
 	// 1. EXTRACT: Parse raw payload into variables
 	if cp.Parser != nil {
 		extracted, err := cp.Parser.Parse(event.Payload, cp.Config.Parser.Vars)
 		if err != nil {
 			log.Printf("Parse error in pipeline '%s': %v", cp.Config.Name, err)
-			event.Nack()
-			return
+			event.Nack() // Nack if parsing fails
+			return nil
 		}
 		// Merge extracted vars into state
-		maps.Copy(state, extracted)
+		for k, v := range extracted {
+			state[k] = v
+		}
+	} else {
+		// If no parser, try to unmarshal raw payload as JSON into a generic "payload" variable
+		var genericPayload map[string]interface{}
+		if err := json.Unmarshal(event.Payload, &genericPayload); err != nil {
+			log.Printf("Failed to unmarshal event payload as JSON in pipeline '%s': %v", cp.Config.Name, err)
+			event.Nack() // Nack if we can't parse the payload at all
+			return nil
+		}
+		maps.Copy(state, genericPayload) // Merge the generic payload into state
 	}
 
 	// 2. TRANSFORM: Run expr formulas
@@ -209,18 +271,42 @@ func (r *Runner) processEvent(cp *compiledPipeline, event bus.Event) {
 		result, err := expr.Run(prog, state)
 		if err != nil {
 			log.Printf("Transform error (%s) in '%s': %v", varName, cp.Config.Name, err)
+			// Continue even if transform fails, as other transforms might succeed
+			// and we don't want to Nack the event for a transform error.
 			continue
 		}
 		state[varName] = result
 	}
+	event.Ack() // Acknowledge event after successfully updating state
 
-	// 3. LOAD (Dispatch immediately)
-	r.dispatchToSinks(cp, state, event.Payload)
-	event.Ack()
+	if cp.Config.Stateful {
+		return maps.Clone(state) // Return a snapshot for safe concurrent dispatch
+	}
+	return state
 }
 
-// dispatchToSinks is the shared formatter logic used by both Event and Cron pipelines
-func (r *Runner) dispatchToSinks(cp *compiledPipeline, state map[string]interface{}, rawPayload []byte) {
+// dispatchAccumulatedState dispatches the current accumulated state of a pipeline.
+// It's typically called by cron jobs or after an event in event-driven pipelines.
+func (r *Runner) dispatchAccumulatedState(cp *compiledPipeline) {
+	cp.lock.Lock()
+	snapshot := maps.Clone(cp.state) // Snapshot under lock
+	cp.lock.Unlock()
+
+	r.dispatchState(cp, snapshot)
+}
+
+// dispatchState handles the routing of a state snapshot to the bus or configured sinks
+func (r *Runner) dispatchState(cp *compiledPipeline, state map[string]interface{}) {
+	if len(cp.Sinks) == 0 {
+		serializedState, _ := json.Marshal(state)
+		r.bus.Publish(cp.Config.Name, serializedState)
+		return
+	}
+	r.dispatchToSinks(cp, state)
+}
+
+// dispatchToSinks is the shared formatter logic
+func (r *Runner) dispatchToSinks(cp *compiledPipeline, state map[string]interface{}) {
 	for _, cs := range cp.Sinks {
 		var outputBytes []byte
 
@@ -240,7 +326,8 @@ func (r *Runner) dispatchToSinks(cp *compiledPipeline, state map[string]interfac
 			}
 			outputBytes = buf.Bytes()
 		} else {
-			outputBytes = rawPayload // Fallback
+			// Default to sending the entire state as JSON if no format is specified
+			outputBytes, _ = json.Marshal(state)
 		}
 
 		if err := cs.Sink.Send(outputBytes); err != nil {

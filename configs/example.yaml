@@ -29,10 +29,6 @@ pipelines:
         uptime: "^(\\d+\\.\\d+)\\s"
     transform:
       uptime: "int(float(uptime))"
-    sinks:
-      - name: stdout
-        format: expr
-        spec: '{ "uptime_seconds": uptime }'
   - name: process_temp
     topics:
       - temp
@@ -44,7 +40,20 @@ pipelines:
         ts:   "$.ts"
     transform:
       temp: "temp * 10"
+      ts: "int(ts)"
+  - name: report
+    stateful: true
+    type: cron
+    schedule: "0/1 * * * * *" # Every second
+    topics:
+      - process_uptime
+      - process_temp
     sinks:
       - name: stdout
         format: expr
-        spec: '{ "temperature": temp, "timestamp": ts }'
+        spec: |
+          {
+            "uptime": uptime ?? 0,
+            "temp": temp,
+            "ts": ts
+          }

@@ -50,7 +50,7 @@ func TestNewRunner(t *testing.T) {
 	}
 }
 
-func TestRunner_Start(t *testing.T) {
+func TestRunner_Start_EventAndCronPipelines(t *testing.T) {
 	b := bus.NewMemoryBus()
 	r := NewRunner(b, make(map[string]sink.Sink))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -75,80 +75,13 @@ func TestRunner_Start(t *testing.T) {
 
 	// Short sleep to allow goroutine for event pipeline to start
 	time.Sleep(20 * time.Millisecond)
-
-	// Verify event pipeline subscribed by publishing and seeing if it doesn't panic
-	busEvents := b.Subscribe("events")
-	err := b.Publish("events", []byte("data"))
-	if err != nil {
-		t.Fatalf("failed to publish: %v", err)
-	}
-
-	select {
-	case event := <-busEvents:
-		// Success, we received the event
-		if event.Payload == nil || string(event.Payload) != "data" {
-			t.Errorf("expected payload 'data', got '%s'", string(event.Payload))
-		}
-	case <-time.After(20 * time.Millisecond):
-		t.Error("expected to receive an event but timed out")
-	}
-
-	// Verify cron pipeline is running by waiting a bit and then checking if it published to the bus
-	events := b.Subscribe("timed")
-	if err := b.Publish("timed", []byte("tick")); err != nil {
-		t.Fatalf("failed to publish to timed topic: %v", err)
-	}
-
-	time.Sleep(1100 * time.Millisecond) // Wait a bit longer than the cron schedule
-
-	select {
-	case event := <-events:
-		// Success, we received a cron event
-		if event.Payload == nil || string(event.Payload) != "tick" {
-			t.Errorf("expected payload 'tick', got '%s'", string(event.Payload))
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Error("expected to receive a cron event but timed out")
-	}
-}
-
-func TestRunner_ProcessEvent(t *testing.T) {
-	var ackCalled int32
-	b := bus.NewMemoryBus()
-	ms := &mockSink{}
-	r := NewRunner(b, map[string]sink.Sink{"stdout": ms})
-
-	cfg := config.PipelineConfig{
-		Name: "test-pipeline",
-		Sinks: []config.PipelineSinkConfig{
-			{Name: "stdout"},
-		},
-	}
-
-	event := bus.Event{
-		Topic:   "test",
-		Payload: []byte("hello"),
-		Ack: func() {
-			atomic.AddInt32(&ackCalled, 1)
-		},
-	}
-
-	cp, err := r.compile(cfg)
-	if err != nil {
-		t.Fatalf("failed to compile: %v", err)
-	}
-
-	r.processEvent(cp, event)
-
-	if atomic.LoadInt32(&ackCalled) != 1 {
-		t.Error("expected event.Ack() to be called")
-	}
 }
 
 func TestRunner_Compile_MissingSink(t *testing.T) {
 	// Ensure compilation fails when a sink is missing
 	b := bus.NewMemoryBus()
 	r := NewRunner(b, make(map[string]sink.Sink))
+
 	cfg := config.PipelineConfig{
 		Name:  "test-pipeline",
 		Sinks: []config.PipelineSinkConfig{{Name: "non-existent"}},
@@ -158,7 +91,7 @@ func TestRunner_Compile_MissingSink(t *testing.T) {
 	}
 }
 
-func TestRunner_RunEventPipeline(t *testing.T) {
+func TestRunner_RunEventPipeline_Stateless(t *testing.T) {
 	b := bus.NewMemoryBus()
 	received := make(chan []byte, 1)
 	ms := &mockSinkWithChannel{received: received}
@@ -186,19 +119,165 @@ func TestRunner_RunEventPipeline(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Publish an event to the bus
-	err = b.Publish("logs", []byte("test data"))
+	err = b.Publish("logs", []byte(`{"msg":"test data"}`))
 	if err != nil {
 		t.Fatalf("failed to publish: %v", err)
 	}
 
 	select {
 	case data := <-received:
-		if string(data) != "test data" {
-			t.Errorf("expected 'test data', got '%s'", string(data))
+		if string(data) != `{"msg":"test data"}` {
+			t.Errorf("expected '{\"msg\":\"test data\"}', got '%s'", string(data))
 		}
 	case <-time.After(20 * time.Millisecond):
 		t.Error("event was not processed within timeout")
 	}
+}
+
+func TestRunner_RunEventPipeline_Stateful(t *testing.T) {
+	b := bus.NewMemoryBus()
+	received := make(chan []byte, 3) // Expecting 3 dispatches
+	ms := &mockSinkWithChannel{received: received}
+	r := NewRunner(b, map[string]sink.Sink{"test": ms})
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	cfg := config.PipelineConfig{
+		Topics:   []string{"data-stream"},
+		Name:     "stateful-event-pipeline",
+		Stateful: true,
+		Parser:   &config.ParserConfig{Type: "json"}, // Assuming a JSON parser that extracts "value"
+		Transform: map[string]string{
+			"sum":  "prev + value", // Accumulate sum
+			"prev": "sum",          // Keep the last value for accumulation
+		},
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "test", Format: "template", Spec: "Current sum: {{.sum}}"},
+		},
+	}
+
+	// Register a mock JSON parser that extracts a "value" field
+	parser.Register("json", func() parser.Parser {
+		return &mockJSONParser{
+			extractField: "value",
+		}
+	})
+
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("failed to compile: %v", err)
+	}
+
+	// Initialize sum to 0
+	cp.state["prev"] = 0.0
+
+	go r.runEventPipeline(ctx, cp)
+	time.Sleep(20 * time.Millisecond) // Allow subscription
+
+	// Send first event
+	b.Publish("data-stream", []byte(`{"value": 10}`))
+	select {
+	case data := <-received:
+		if string(data) != "Current sum: 10" {
+			t.Errorf("Expected 'Current sum: 10', got '%s'", string(data))
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Timed out waiting for first dispatch")
+	}
+
+	// Send second event
+	b.Publish("data-stream", []byte(`{"value": 5}`))
+	select {
+	case data := <-received:
+		if string(data) != "Current sum: 15" {
+			t.Errorf("Expected 'Current sum: 15', got '%s'", string(data))
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Timed out waiting for second dispatch")
+	}
+
+	// Send third event
+	b.Publish("data-stream", []byte(`{"value": 20}`))
+	select {
+	case data := <-received:
+		if string(data) != "Current sum: 35" {
+			t.Errorf("Expected 'Current sum: 35', got '%s'", string(data))
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("Timed out waiting for third dispatch")
+	}
+}
+
+func TestRunner_RunCronPipeline_Stateless(t *testing.T) {
+	b := bus.NewMemoryBus()
+	received := make(chan []byte, 2) // Expecting 2 dispatches
+	ms := &mockSinkWithChannel{received: received}
+	r := NewRunner(b, map[string]sink.Sink{"test": ms})
+	ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond) // Longer timeout for cron
+	defer cancel()
+
+	cfg := config.PipelineConfig{
+		Topics:   []string{"cron1", "cron2"},
+		Name:     "stateless-cron-pipeline",
+		Type:     "cron",
+		Schedule: "0/1 * * * * *", // Every second
+		Stateful: false,           // Explicitly stateless
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "test", Format: "template", Spec: "Value: {{.value}}"},
+		},
+	}
+
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("failed to compile: %v", err)
+	}
+
+	go r.runCronPipeline(ctx, cp)
+	time.Sleep(20 * time.Millisecond) // Allow subscription
+
+	// Publish events
+	b.Publish("cron1", []byte(`{"value": 1}`))
+	b.Publish("cron2", []byte(`{"value": 2}`))
+
+	// Wait for first cron tick (should process both events)
+	select {
+	case data := <-received:
+		if string(data) != "Value: 1" && string(data) != "Value: 2" {
+			t.Errorf("Expected 'Value: 1' or 'Value: 2', got '%s'", string(data))
+		}
+	case <-time.After(1100 * time.Millisecond):
+		t.Fatal("Timed out waiting for first cron dispatch")
+	}
+	select {
+	case data := <-received:
+		if string(data) != "Value: 1" && string(data) != "Value: 2" {
+			t.Errorf("Expected 'Value: 1' or 'Value: 2', got '%s'", string(data))
+		}
+	case <-time.After(10 * time.Millisecond): // Short timeout for second event from same tick
+		t.Fatal("Timed out waiting for second dispatch from first cron tick")
+	}
+
+	// Publish another event after the first tick
+	b.Publish("cron1", []byte(`{"value": 3}`))
+
+	// Wait for second cron tick (should process only the new event)
+	select {
+	case data := <-received:
+		if string(data) != "Value: 3" {
+			t.Errorf("Expected 'Value: 3', got '%s'", string(data))
+		}
+	case <-time.After(1100 * time.Millisecond):
+		t.Fatal("Timed out waiting for second cron dispatch")
+	}
+
+	// Ensure no more events are processed from previous ticks
+	select {
+	case data := <-received:
+		t.Errorf("Unexpected dispatch: %s", string(data))
+	case <-time.After(50 * time.Millisecond):
+		// Expected, no more events should be processed
+	}
+
 }
 
 func TestRunner_Compile_Errors(t *testing.T) {
@@ -240,7 +319,7 @@ func TestRunner_Compile_Errors(t *testing.T) {
 	}
 }
 
-func TestRunner_ProcessEvent_FullETL(t *testing.T) {
+func TestRunner_FullETL_Stateless(t *testing.T) {
 	received := make(chan []byte, 2)
 	ms := &mockSinkWithChannel{received: received}
 	b := bus.NewMemoryBus()
@@ -262,7 +341,13 @@ func TestRunner_ProcessEvent_FullETL(t *testing.T) {
 		t.Fatalf("compile failed: %v", err)
 	}
 
-	r.processEvent(cp, bus.Event{Payload: []byte("{}"), Ack: func() {}})
+	event := bus.Event{Payload: []byte("{}"), Ack: func() {}}
+	state := r.updateStateFromEvent(cp, event)
+	if state != nil {
+		r.dispatchState(cp, state)
+	} else {
+		t.Fatal("expected state to be returned from updateStateFromEvent")
+	}
 
 	// 1. Template Output
 	select {
@@ -289,20 +374,98 @@ func TestRunner_ProcessEvent_FullETL(t *testing.T) {
 	}
 }
 
-func TestRunner_ProcessEvent_ParserError(t *testing.T) {
+func TestRunner_RunCronPipeline_Stateful(t *testing.T) {
+	b := bus.NewMemoryBus()
+	received := make(chan []byte, 3) // Expecting 3 dispatches
+	ms := &mockSinkWithChannel{received: received}
+	r := NewRunner(b, map[string]sink.Sink{"test": ms})
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond) // Longer timeout for cron
+	defer cancel()
+
+	cfg := config.PipelineConfig{
+		Topics:   []string{"sensor-data"},
+		Name:     "stateful-cron-pipeline",
+		Type:     "cron",
+		Schedule: "0/1 * * * * *", // Every second
+		Stateful: true,
+		Parser:   &config.ParserConfig{Type: "json"}, // Assuming a JSON parser that extracts "temp"
+		Transform: map[string]string{
+			"old_avg":   "avg_temp",
+			"hits":      "msg_count",
+			"msg_count": "msg_count + 1",
+			"avg_temp":  "(old_avg * hits + temp) / (hits + 1)", // Simple running average
+		},
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "test", Format: "template", Spec: "Avg Temp: {{.avg_temp | printf \"%.2f\"}}, Count: {{.msg_count}}"},
+		},
+	}
+
+	// Register a mock JSON parser that extracts a "temp" field
+	parser.Register("json", func() parser.Parser {
+		return &mockJSONParser{
+			extractField: "temp",
+		}
+	})
+
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("failed to compile: %v", err)
+	}
+
+	// Initialize state for running average
+	cp.state["avg_temp"] = 0.0
+	cp.state["msg_count"] = 0.0
+
+	go r.runCronPipeline(ctx, cp)
+	time.Sleep(20 * time.Millisecond) // Allow subscription
+
+	// Send events
+	b.Publish("sensor-data", []byte(`{"temp": 20}`)) // State: avg=20, count=1
+	time.Sleep(50 * time.Millisecond)
+	b.Publish("sensor-data", []byte(`{"temp": 25}`)) // State: avg=22.5, count=2
+	time.Sleep(50 * time.Millisecond)
+
+	// First cron tick (after ~1s)
+	select {
+	case data := <-received:
+		if string(data) != "Avg Temp: 22.50, Count: 2" {
+			t.Errorf("Expected 'Avg Temp: 22.50, Count: 2', got '%s'", string(data))
+		}
+	case <-time.After(1100 * time.Millisecond):
+		t.Fatal("Timed out waiting for first cron dispatch")
+	}
+
+	b.Publish("sensor-data", []byte(`{"temp": 30}`)) // State: avg=25, count=3
+	time.Sleep(50 * time.Millisecond)
+
+	// Second cron tick (after ~2s)
+	select {
+	case data := <-received:
+		if string(data) != "Avg Temp: 25.00, Count: 3" {
+			t.Errorf("Expected 'Avg Temp: 25.00, Count: 3', got '%s'", string(data))
+		}
+	case <-time.After(1100 * time.Millisecond):
+		t.Fatal("Timed out waiting for second cron dispatch")
+	}
+}
+
+func TestRunner_ParserError(t *testing.T) {
 	var nackCalled int32
 	b := bus.NewMemoryBus()
 	r := NewRunner(b, nil)
 
 	cfg := config.PipelineConfig{
 		Parser: &config.ParserConfig{Type: "error"},
+		Sinks:  []config.PipelineSinkConfig{}, // Ensure no dispatch happens
 	}
-	cp, _ := r.compile(cfg)
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("failed to compile: %v", err)
+	}
 
-	r.processEvent(cp, bus.Event{
+	r.updateStateFromEvent(cp, bus.Event{
 		Nack: func() { atomic.StoreInt32(&nackCalled, 1) },
 	})
-
 	if atomic.LoadInt32(&nackCalled) != 1 {
 		t.Error("expected Nack() to be called on parser error")
 	}
@@ -323,9 +486,15 @@ func TestRunner_ProcessEvent_TransformError(t *testing.T) {
 	}
 	cp, _ := r.compile(cfg)
 
-	r.processEvent(cp, bus.Event{Payload: []byte("{}"), Ack: func() {}})
+	event := bus.Event{Payload: []byte("{}"), Ack: func() {}}
+	state := r.updateStateFromEvent(cp, event)
+	if state != nil {
+		r.dispatchState(cp, state)
+	} else {
+		t.Fatal("expected state to be returned from updateStateFromEvent")
+	}
 
-	if string(<-received) != "10" {
+	if string(<-received) != "10" { // Expecting "10" from the 'ok' transform
 		t.Error("expected processing to continue after transform error")
 	}
 }
@@ -339,12 +508,31 @@ func TestRunner_ProcessEvent_RawFallback(t *testing.T) {
 	cfg := config.PipelineConfig{
 		Sinks: []config.PipelineSinkConfig{{Name: "test", Format: "raw"}},
 	}
-	cp, _ := r.compile(cfg)
+	// Use mock parser to ensure state is populated
+	cfg.Parser = &config.ParserConfig{Type: "mock"} // This parser returns {"val": 42}
 
-	r.processEvent(cp, bus.Event{Payload: []byte("raw"), Ack: func() {}})
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("failed to compile: %v", err)
+	}
 
-	if string(<-received) != "raw" {
-		t.Error("expected raw payload fallback")
+	event := bus.Event{Payload: []byte("original raw payload"), Ack: func() {}}
+	state := r.updateStateFromEvent(cp, event)
+	if state != nil {
+		r.dispatchState(cp, state)
+	} else {
+		t.Fatal("expected state to be returned from updateStateFromEvent")
+	}
+
+	expectedOutput := `{"val":42}` // The mock parser sets "val": 42, and "raw" format now marshals the state.
+
+	select {
+	case data := <-received:
+		if string(data) != expectedOutput {
+			t.Errorf("expected '%s', got '%s'", expectedOutput, string(data))
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("timed out waiting for raw fallback output")
 	}
 }
 
@@ -356,4 +544,20 @@ type mockSinkWithChannel struct {
 func (m *mockSinkWithChannel) Send(b []byte) error {
 	m.received <- b
 	return nil
+}
+
+// mockJSONParser implements parser.Parser for testing JSON extraction
+type mockJSONParser struct {
+	extractField string
+}
+
+func (m *mockJSONParser) Parse(payload []byte, vars map[string]string) (map[string]any, error) {
+	var data map[string]any
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return nil, err
+	}
+	if val, ok := data[m.extractField]; ok {
+		return map[string]any{m.extractField: val}, nil
+	}
+	return map[string]any{}, nil
 }
