@@ -4,25 +4,59 @@
     <meta charset="UTF-8">
     <title>Siphon Config Editor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ext-keybinding_menu.min.js"></script>
     <style>
         body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #1e1e1e; }
         #header { background: #2c3e50; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; }
         #header h1 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 10px; }
+        #header h1 a { color: white; text-decoration: none; padding: 0 10px; border-radius: 4px; transition: background 0.2s; font-size: 22px; cursor: pointer; }
+        #header h1 a:hover { background: rgba(255,255,255,0.2); }
         #editor { flex-grow: 1; }
         button { background: #3498db; border: none; color: white; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
         button:hover { background: #2980b9; }
+        button.secondary { background: #7f8c8d; }
+        button.secondary:hover { background: #95a5a6; }
         #status { margin-left: 15px; font-size: 14px; color: #f1c40f; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); }
+        .modal-content { background: #2c3e50; color: white; margin: 10% auto; padding: 25px; border-radius: 8px; width: 350px; position: relative; box-shadow: 0 4px 20px rgba(0,0,0,0.6); }
+        .modal-content h2 { margin: 0 0 15px 0; font-size: 20px; border-bottom: 1px solid #3e4f5f; padding-bottom: 10px; }
+        .close { position: absolute; right: 20px; top: 15px; font-size: 28px; cursor: pointer; color: #bdc3c7; }
+        .close:hover { color: white; }
+        .shortcut-table { width: 100%; border-collapse: collapse; }
+        .shortcut-table td { padding: 12px 0; border-bottom: 1px solid #3e4f5f; font-size: 14px; }
+        .shortcut-table tr:last-child td { border-bottom: none; }
+        code { background: #34495e; padding: 3px 6px; border-radius: 4px; font-family: monospace; color: #e67e22; font-size: 13px; }
     </style>
 </head>
 <body>
     <div id="header">
         <h1>
+            <a href="javascript:history.back()" title="Back">←</a>
             Siphon Pipeline Editor
             <span id="status"></span>
         </h1>
-        <button onclick="saveConfig()">Save Configuration</button>
+        <div style="display: flex; gap: 10px;">
+            <button class="secondary" onclick="toggleHelp()">Shortcuts</button>
+            <button onclick="saveConfig()">Save Configuration</button>
+        </div>
     </div>
     <div id="editor">Loading configuration...</div>
+
+    <div id="helpModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="toggleHelp()">&times;</span>
+            <h2>Keyboard Shortcuts</h2>
+            <table class="shortcut-table">
+                <tr><td>Save Config</td><td><code>Ctrl+S</code> / <code>⌘S</code></td></tr>
+                <tr><td>Find</td><td><code>Ctrl+F</code> / <code>⌘F</code></td></tr>
+                <tr><td>Replace</td><td><code>Ctrl+H</code> / <code>⌘H</code></td></tr>
+                <tr><td>Undo</td><td><code>Ctrl+Z</code> / <code>⌘Z</code></td></tr>
+                <tr><td>Redo</td><td><code>Ctrl+Shift+Z</code> / <code>⌘⇧Z</code></td></tr>
+                <tr><td>Comment</td><td><code>Ctrl+/</code> / <code>⌘/</code></td></tr>
+                <tr><td>Show all shortcuts</td><td><code>Ctrl+Alt+H</code></td></tr>
+            </table>
+        </div>
+    </div>
 
     <script>
         // Initialize Ace Editor
@@ -31,6 +65,56 @@
         editor.session.setMode("ace/mode/yaml");
         editor.setFontSize(14);
         editor.setShowPrintMargin(false);
+
+        // Add Ctrl+S / Cmd+S support
+        editor.commands.addCommand({
+            name: "save",
+            bindKey: {win: "Ctrl-S", mac: "Command-S"},
+            exec: function(editor) {
+                saveConfig();
+            }
+        });
+
+        // Show all available Ace keybindings
+        editor.commands.addCommand({
+            name: "showKeyboardShortcuts",
+            bindKey: {win: "Ctrl-Alt-h", mac: "Command-Alt-h"},
+            exec: function(editor) {
+                ace.config.loadModule("ace/ext/keybinding_menu", function(module) {
+                    module.init(editor);
+                    editor.showKeyboardShortcuts();
+                });
+            }
+        });
+
+        // Add Ctrl+S / Cmd+S support
+        editor.commands.addCommand({
+            name: "save",
+            bindKey: {win: "Ctrl-S", mac: "Command-S"},
+            exec: function(editor) {
+                saveConfig();
+            }
+        });
+
+        // Disable browser's default save dialog on Ctrl+S / Cmd+S
+        window.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+            }
+        });
+
+        function toggleHelp() {
+            const modal = document.getElementById('helpModal');
+            modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('helpModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
 
         // Fetch config.yaml from the Go server
         function loadConfig() {
