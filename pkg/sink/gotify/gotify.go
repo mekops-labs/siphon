@@ -67,16 +67,6 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 		return nil, fmt.Errorf("gotify sink: url and token are required fields")
 	}
 
-	// Reformat title to support dynamic timestamps and other variables in the future
-	if opt.Title != "" {
-		formattedTitle, err := reformatTitle(opt.Title)
-		if err != nil {
-			log.Printf("Failed to reformat gotify title: %v", err)
-			formattedTitle = opt.Title // Fallback to original title if formatting fails
-		}
-		opt.Title = formattedTitle
-	}
-
 	return &gotifySink{
 		params: opt,
 		client: &http.Client{Timeout: defaultTimeout},
@@ -93,6 +83,12 @@ func (s *gotifySink) Send(b []byte) error {
 
 	if payload["title"] == "" {
 		payload["title"] = "Siphon Alert" // Default title
+		formattedTitle, err := reformatTitle(s.params.Title)
+		if err != nil {
+			log.Printf("Failed to reformat gotify title: %v", err)
+			formattedTitle = s.params.Title // Fallback to original title if formatting fails
+		}
+		payload["title"] = formattedTitle
 	}
 
 	jsonPayload, _ := json.Marshal(payload)

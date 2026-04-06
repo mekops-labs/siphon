@@ -72,16 +72,6 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 		opt.Priority = 3
 	}
 
-	// Reformat title to support dynamic timestamps and other variables in the future
-	if opt.Title != "" {
-		formattedTitle, err := reformatTitle(opt.Title)
-		if err != nil {
-			log.Printf("Failed to reformat ntfy title: %v", err)
-			formattedTitle = opt.Title // Fallback to original title if formatting fails
-		}
-		opt.Title = formattedTitle
-	}
-
 	return &ntfySink{
 		params: opt,
 		client: &http.Client{Timeout: defaultTimeout},
@@ -104,7 +94,12 @@ func (s *ntfySink) Send(b []byte) error {
 		req.Header.Set("Authorization", "Bearer "+s.params.Token)
 	}
 	if s.params.Title != "" {
-		req.Header.Set("Title", s.params.Title)
+		formattedTitle, err := reformatTitle(s.params.Title)
+		if err != nil {
+			log.Printf("Failed to reformat ntfy title: %v", err)
+			formattedTitle = s.params.Title // Fallback to original title if formatting fails
+		}
+		req.Header.Set("Title", formattedTitle)
 	}
 	if s.params.Priority > 0 {
 		req.Header.Set("Priority", fmt.Sprintf("%d", s.params.Priority))
