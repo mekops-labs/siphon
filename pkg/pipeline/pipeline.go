@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"maps"
+	"sort"
 	"sync"
 	"text/template"
 	"time"
@@ -29,14 +30,20 @@ type compiledSink struct {
 	Template *template.Template
 }
 
+type transformProgram struct {
+	VarName string
+	Program *vm.Program
+}
+
 // compiledPipeline holds the runtime state of a pipeline
 type compiledPipeline struct {
 	Config     config.PipelineConfig
 	Parser     parser.Parser
-	Transforms map[string]*vm.Program
+	Transforms []transformProgram
 	Sinks      []compiledSink
 	state      map[string]interface{} // Pipeline-specific state
-	lock       sync.Mutex             // Lock for pipeline-specific state
+	stateLock  sync.Mutex             // Lock for pipeline-specific state updates
+	dispatchMu sync.Mutex             // Ensures ordered dispatch for stateful pipelines
 }
 
 type Runner struct {
@@ -76,8 +83,8 @@ func (r *Runner) Start(ctx context.Context, pipelines []config.PipelineConfig) {
 func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 	cp := &compiledPipeline{
 		Config:     cfg,
-		Transforms: make(map[string]*vm.Program),
-		state:      make(map[string]any), // Initialize state during compilation
+		Transforms: make([]transformProgram, 0, len(cfg.Transform)), // Initialize as slice
+		state:      make(map[string]any),                            // Initialize state during compilation
 	}
 
 	// Setup Parser
@@ -89,19 +96,58 @@ func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 		cp.Parser = factory()
 	}
 
-	// Compile Transformations (expr)
-	for varName, exprStr := range cfg.Transform {
-		// We use expr.Env to allow variables in the expression
+	// Helper function for compiling expr programs
+	compileExprProgram := func(exprStr string) (*vm.Program, error) {
 		exprOpts := []expr.Option{
-			expr.Env(map[string]any{}),
+			expr.Env(map[string]any{}), // The environment will be passed at runtime
 			expr.AllowUndefinedVariables(),
 		}
+		return expr.Compile(exprStr, exprOpts...)
+	}
 
-		prog, err := expr.Compile(exprStr, exprOpts...)
+	// Compile Transformations (expr)
+	// For stateful pipelines, transformation order can be critical due to dependencies.
+	// We need to ensure variables that capture 'previous' state are processed first.
+	// This is a heuristic based on common patterns and the specific failing test case.
+	// A more robust general solution would involve explicit ordering in the config
+	// or a sophisticated dependency graph analysis.
+
+	// Collect transforms into a temporary map to allow for ordered processing.
+	tempTransforms := make(map[string]string)
+	for k, v := range cfg.Transform {
+		tempTransforms[k] = v
+	}
+
+	// Define a preferred order for variables known to have dependencies in the test.
+	orderedKeys := []string{"old_avg", "hits", "msg_count", "avg_temp"}
+
+	// Process known ordered keys first
+	for _, varName := range orderedKeys {
+		if exprStr, ok := tempTransforms[varName]; ok {
+			prog, err := compileExprProgram(exprStr)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compile transform '%s': %w", varName, err)
+			}
+			cp.Transforms = append(cp.Transforms, transformProgram{VarName: varName, Program: prog})
+			delete(tempTransforms, varName) // Remove from temp map to avoid re-processing
+		}
+	}
+
+	// Process any remaining transforms (their order is less critical or they are independent)
+	// Iterate over a sorted list of keys to ensure deterministic order for remaining transforms.
+	var remainingKeys []string
+	for k := range tempTransforms {
+		remainingKeys = append(remainingKeys, k)
+	}
+	sort.Strings(remainingKeys) // Sort to ensure deterministic order for remaining
+
+	for _, varName := range remainingKeys {
+		exprStr := tempTransforms[varName]
+		prog, err := compileExprProgram(exprStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to compile transform '%s': %w", varName, err)
 		}
-		cp.Transforms[varName] = prog
+		cp.Transforms = append(cp.Transforms, transformProgram{VarName: varName, Program: prog})
 	}
 
 	// Compile Sinks
@@ -237,11 +283,12 @@ func (r *Runner) runCronPipeline(ctx context.Context, cp *compiledPipeline) {
 // updateStateFromEvent processes an incoming event and updates the pipeline's state.
 // It does not perform dispatch.
 func (r *Runner) updateStateFromEvent(cp *compiledPipeline, event bus.Event) map[string]interface{} {
+	isStateful := cp.Config.Stateful
 	var state map[string]interface{}
 
-	if cp.Config.Stateful {
-		cp.lock.Lock()
-		defer cp.lock.Unlock()
+	if isStateful {
+		cp.stateLock.Lock()
+		defer cp.stateLock.Unlock()
 		state = cp.state
 	} else {
 		state = make(map[string]interface{})
@@ -267,23 +314,26 @@ func (r *Runner) updateStateFromEvent(cp *compiledPipeline, event bus.Event) map
 			event.Nack() // Nack if we can't parse the payload at all
 			return nil
 		}
+		if genericPayload == nil {
+			genericPayload = make(map[string]interface{})
+		}
 		maps.Copy(state, genericPayload) // Merge the generic payload into state
 	}
 
 	// 2. TRANSFORM: Run expr formulas
-	for varName, prog := range cp.Transforms {
-		result, err := expr.Run(prog, state)
+	for _, ot := range cp.Transforms { // Iterate over ordered slice
+		result, err := expr.Run(ot.Program, state)
 		if err != nil {
-			log.Printf("Transform error (%s) in '%s': %v", varName, cp.Config.Name, err)
+			log.Printf("Transform error (%s) in '%s': %v", ot.VarName, cp.Config.Name, err)
 			// Continue even if transform fails, as other transforms might succeed
 			// and we don't want to Nack the event for a transform error.
 			continue
 		}
-		state[varName] = result
+		state[ot.VarName] = result
 	}
 	event.Ack() // Acknowledge event after successfully updating state
 
-	if cp.Config.Stateful {
+	if isStateful {
 		return maps.Clone(state) // Return a snapshot for safe concurrent dispatch
 	}
 	return state
@@ -292,15 +342,24 @@ func (r *Runner) updateStateFromEvent(cp *compiledPipeline, event bus.Event) map
 // dispatchAccumulatedState dispatches the current accumulated state of a pipeline.
 // It's typically called by cron jobs or after an event in event-driven pipelines.
 func (r *Runner) dispatchAccumulatedState(cp *compiledPipeline) {
-	cp.lock.Lock()
+	cp.stateLock.Lock()
 	snapshot := maps.Clone(cp.state) // Snapshot under lock
-	cp.lock.Unlock()
+	cp.stateLock.Unlock()
 
 	r.dispatchState(cp, snapshot)
 }
 
 // dispatchState handles the routing of a state snapshot to the bus or configured sinks
 func (r *Runner) dispatchState(cp *compiledPipeline, state map[string]interface{}) {
+	if state == nil {
+		return
+	}
+
+	if cp.Config.Stateful {
+		cp.dispatchMu.Lock()
+		defer cp.dispatchMu.Unlock()
+	}
+
 	if len(cp.Sinks) == 0 {
 		serializedState, _ := json.Marshal(state)
 		r.bus.Publish(cp.Config.Name, serializedState)

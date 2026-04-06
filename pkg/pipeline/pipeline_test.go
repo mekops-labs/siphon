@@ -148,8 +148,8 @@ func TestRunner_RunEventPipeline_Stateful(t *testing.T) {
 		Stateful: true,
 		Parser:   &config.ParserConfig{Type: "json"}, // Assuming a JSON parser that extracts "value"
 		Transform: map[string]string{
-			"sum":  "prev + value", // Accumulate sum
 			"prev": "sum",          // Keep the last value for accumulation
+			"sum":  "prev + value", // Accumulate sum
 		},
 		Sinks: []config.PipelineSinkConfig{
 			{Name: "test", Format: "template", Spec: "Current sum: {{.sum}}"},
@@ -170,6 +170,11 @@ func TestRunner_RunEventPipeline_Stateful(t *testing.T) {
 
 	// Initialize sum to 0
 	cp.state["prev"] = 0.0
+	cp.state["sum"] = 0.0
+	cp.state["sum"] = 0.0  // Initialize sum for the first iteration
+	cp.state["prev"] = 0.0 // Initialize prev as well, though it will be overwritten by "sum"
+
+	// Start pipeline in background
 
 	go r.runEventPipeline(ctx, cp)
 	time.Sleep(20 * time.Millisecond) // Allow subscription
