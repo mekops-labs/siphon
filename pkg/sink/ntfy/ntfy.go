@@ -3,8 +3,10 @@ package ntfy
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
+	"text/template"
 	"time"
 
 	"github.com/mekops-labs/siphon/pkg/bus"
@@ -34,6 +36,28 @@ func init() {
 	sink.Registry.Add("ntfy", New)
 }
 
+func reformatTitle(in string) (string, error) {
+	fMap := template.FuncMap{
+		"now": func(f string) string { return time.Now().Format(f) },
+	}
+
+	tmpl, err := template.New("title").Funcs(fMap).Parse(in)
+	if err != nil {
+		return "", err
+	}
+
+	var buf string
+	title := bytes.NewBufferString(buf)
+
+	// Run the template to verify the output.
+	err = tmpl.Execute(title, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return title.String(), nil
+}
+
 func New(params any, _ bus.Bus) (sink.Sink, error) {
 	var opt ntfyParams
 	if err := mapstructure.Decode(params, &opt); err != nil {
@@ -46,6 +70,16 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 
 	if opt.Priority < 1 || opt.Priority > 5 {
 		opt.Priority = 3
+	}
+
+	// Reformat title to support dynamic timestamps and other variables in the future
+	if opt.Title != "" {
+		formattedTitle, err := reformatTitle(opt.Title)
+		if err != nil {
+			log.Printf("Failed to reformat ntfy title: %v", err)
+			formattedTitle = opt.Title // Fallback to original title if formatting fails
+		}
+		opt.Title = formattedTitle
 	}
 
 	return &ntfySink{

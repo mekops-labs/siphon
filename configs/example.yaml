@@ -29,6 +29,7 @@ pipelines:
         uptime: "^(\\d+\\.\\d+)\\s"
     transform:
       uptime: "int(float(uptime))"
+
   - name: process_temp
     topics:
       - temp
@@ -41,6 +42,7 @@ pipelines:
     transform:
       temp: "temp * 10"
       ts: "int(ts)"
+
   - name: report
     stateful: true
     type: cron
@@ -55,5 +57,10 @@ pipelines:
           {
             "uptime": uptime ?? 0,
             "temp": temp,
-            "ts": ts
+            "ts": ts,
+            "now": now()
           }
+      - name: stdout
+        format: template
+        spec: |
+          Uptime: {{ .uptime }}s, Temp: {{ .temp }}°C, Timestamp: {{ printf "%.0f" .ts }}, Now: {{ now "2006-01-02 15:04:05" }}

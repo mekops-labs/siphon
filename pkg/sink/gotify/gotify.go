@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html/template"
+	"log"
 	"net/http"
 	"net/url"
 	"time"
@@ -33,6 +35,28 @@ func init() {
 	sink.Registry.Add("gotify", New)
 }
 
+func reformatTitle(in string) (string, error) {
+	fMap := template.FuncMap{
+		"now": func(f string) string { return time.Now().Format(f) },
+	}
+
+	tmpl, err := template.New("title").Funcs(fMap).Parse(in)
+	if err != nil {
+		return "", err
+	}
+
+	var buf string
+	title := bytes.NewBufferString(buf)
+
+	// Run the template to verify the output.
+	err = tmpl.Execute(title, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return title.String(), nil
+}
+
 func New(params any, _ bus.Bus) (sink.Sink, error) {
 	var opt gotifyParams
 	if err := mapstructure.Decode(params, &opt); err != nil {
@@ -41,6 +65,16 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 
 	if opt.URL == "" || opt.Token == "" {
 		return nil, fmt.Errorf("gotify sink: url and token are required fields")
+	}
+
+	// Reformat title to support dynamic timestamps and other variables in the future
+	if opt.Title != "" {
+		formattedTitle, err := reformatTitle(opt.Title)
+		if err != nil {
+			log.Printf("Failed to reformat gotify title: %v", err)
+			formattedTitle = opt.Title // Fallback to original title if formatting fails
+		}
+		opt.Title = formattedTitle
 	}
 
 	return &gotifySink{

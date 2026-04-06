@@ -77,7 +77,7 @@ func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 	cp := &compiledPipeline{
 		Config:     cfg,
 		Transforms: make(map[string]*vm.Program),
-		state:      make(map[string]interface{}), // Initialize state during compilation
+		state:      make(map[string]any), // Initialize state during compilation
 	}
 
 	// Setup Parser
@@ -131,7 +131,11 @@ func (r *Runner) compile(cfg config.PipelineConfig) (*compiledPipeline, error) {
 			}
 			cs.ExprProg = prog
 		case "template":
-			tmpl, err := template.New(sCfg.Name).Parse(sCfg.Spec)
+			fMap := template.FuncMap{
+				"now": func(f string) string { return time.Now().Format(f) },
+			}
+
+			tmpl, err := template.New(sCfg.Name).Funcs(fMap).Parse(sCfg.Spec)
 			if err != nil {
 				return nil, fmt.Errorf("failed to compile sink template '%s': %w", cs.Name, err)
 			}
