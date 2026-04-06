@@ -1,29 +1,41 @@
-version: 2
+# Siphon Configuration Example
+# This file demonstrates the core features: Extraction, Transformation, State Management, and Triggering.
 
+# ==============================================================================
+# 1. COLLECTORS
+# Collectors ingest data from external sources and publish raw payloads to the
+# internal event bus. Each entry in 'topics' maps an internal alias to a source.
+# ==============================================================================
 collectors:
   in:
     type: shell
     params:
-      interval: 1
+      interval: 1 # Polling interval in seconds (default is 10)
     topics:
+      # For shell collectors, the topic value is the command to execute.
       temp: "echo '{ \"temp\": 23.5, \"ts\":' $(date +%s) '}'"
   file:
     type: file
     params:
-      interval: 10
+      interval: 10 # Polling interval in seconds (default is 10)
     topics:
+      # For file collectors, the topic value is the file path to read.
       uptime: "/proc/uptime"
 
 sinks:
+  ## This sink is used in the pipelines below to print results to the console.
   stdout:
     type: stdout
 
 pipelines:
+  # EVENT-DRIVEN PIPELINE (Stateless)
+  # Triggers immediately as soon as data arrives on the 'temp_sensor' topic.
   - name: process_uptime
     topics:
       - uptime
-    bus_mode: volatile
+    bus_mode: volatile # Data is processed and forgotten; not persisted on the bus.
     parser:
+      # Regex parser to extract the first number (uptime in seconds) from the /proc/uptime output.
       type: regex
       vars:
         uptime: "^(\\d+\\.\\d+)\\s"
@@ -35,6 +47,7 @@ pipelines:
       - temp
     bus_mode: volatile
     parser:
+      # JSONPath parser to extract 'temp' and 'ts' from the JSON string produced by the shell command.
       type: jsonpath
       vars:
         temp: "$.temp"
@@ -42,7 +55,10 @@ pipelines:
     transform:
       temp: "temp * 10"
       ts: "int(ts)"
+      tempStr: "string(temp/10) + '°C'"
 
+  # TIME-DRIVEN PIPELINE (Stateful)
+  # Triggers on a schedule (every second) and can access the latest values of multiple topics from the bus.
   - name: report
     stateful: true
     type: cron
@@ -52,6 +68,7 @@ pipelines:
       - process_temp
     sinks:
       - name: stdout
+        # The 'expr' format allows us to compute a new payload using the latest values of 'uptime', 'temp', and 'ts' from the bus.
         format: expr
         spec: |
           {
@@ -61,6 +78,7 @@ pipelines:
             "now": now()
           }
       - name: stdout
+        # The 'template' format allows us to create a human-readable message using the latest 'tempStr' value from the bus.
         format: template
         spec: |
-          Uptime: {{ .uptime }}s, Temp: {{ .temp }}°C, Timestamp: {{ printf "%.0f" .ts }}, Now: {{ now "2006-01-02 15:04:05" }}
+          Current temperature: {{ .tempStr }}

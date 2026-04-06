@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 (2026-04-06)
+
+- fixed title parsing in ntfy and gotify sinks
+
 ## 0.4.1 (2026-04-06)
 
 - added `*` support for hass collector
