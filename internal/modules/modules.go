@@ -5,10 +5,12 @@ package modules
 
 import (
 	_ "github.com/mekops-labs/siphon/pkg/collector/file"
+	_ "github.com/mekops-labs/siphon/pkg/collector/hass"
 	_ "github.com/mekops-labs/siphon/pkg/collector/mqtt"
 	_ "github.com/mekops-labs/siphon/pkg/collector/shell"
 	_ "github.com/mekops-labs/siphon/pkg/parser/jsonpath"
 	_ "github.com/mekops-labs/siphon/pkg/parser/regex"
+	_ "github.com/mekops-labs/siphon/pkg/sink/bus"
 	_ "github.com/mekops-labs/siphon/pkg/sink/gotify"
 	_ "github.com/mekops-labs/siphon/pkg/sink/iotplotter"
 	_ "github.com/mekops-labs/siphon/pkg/sink/ntfy"

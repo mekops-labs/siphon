@@ -171,8 +171,6 @@ func TestRunner_RunEventPipeline_Stateful(t *testing.T) {
 	// Initialize sum to 0
 	cp.state["prev"] = 0.0
 	cp.state["sum"] = 0.0
-	cp.state["sum"] = 0.0  // Initialize sum for the first iteration
-	cp.state["prev"] = 0.0 // Initialize prev as well, though it will be overwritten by "sum"
 
 	// Start pipeline in background
 
