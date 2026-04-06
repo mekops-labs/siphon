@@ -12,12 +12,8 @@ collectors:
       url: "tcp://localhost:1883"
       user: "siphon_user"
       pass: "mqtt_pass"
-
-pipelines:
-  - name: "telemetry"
-    from: mosquitto
-    source_topic: "home/livingroom/sensors/#"
-    # ... rest of pipeline
+    topics:
+      - livingroom: "home/livingroom/sensors/#"
 ```
 
 ## Quick How-To

@@ -10,12 +10,8 @@ collectors:
     type: "shell"
     params:
       interval: 60 # Run every minute
-
-pipelines:
-  - name: "disk-usage"
-    from: cli_tools
-    source_topic: "df -h / --output=pcent | tail -1"
-    # ... rest of pipeline
+    topics:
+      - free_space: "df -h / --output=pcent | tail -1"
 ```
 
 ## Quick How-To
@@ -24,4 +20,4 @@ pipelines:
    features.
 2. **Output**: Only the standard output (`stdout`) is captured. If the command fails (returns non-zero), the error is
    logged and no data is published.
-3. **Source Topic**: The `source_topic` in the pipeline configuration is exactly the command string to be executed.
+3. **Topics**: The `topics` in the pipeline configuration are exactly the commands string to be executed.

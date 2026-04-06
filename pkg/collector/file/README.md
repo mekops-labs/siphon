@@ -12,11 +12,8 @@ collectors:
     type: "file"
     params:
       interval: 30 # Poll every 30 seconds
-
-pipelines:
-  - name: "system-monitor"
-    source_topic: "/var/log/syslog" # The "topic" for a file collector is the file path
-    # ... rest of pipeline
+    topics:
+      syslog: "/var/log/syslog" # The "topic" for a file collector is the file path
 ```
 
 ## Quick How-To
