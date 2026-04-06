@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (2026-04-06)
+
+- added `hass` collector
+
+## 0.4.0-rc3 (2026-04-06)
+
+- added `now` function to template parsing and gotify and ntfy titles
+- updated windy sink with new API
+- fixed some possible race conditions in stateful pipelines
+
 ## 0.4.0-rc2 (2026-04-04)
 
 - added statful cron pipelines support
