@@ -63,7 +63,7 @@ graph LR
 
 ## Example configuration
 
-Configuration is in YAML file. Example is [here](./configs/example.yaml)
+Configuration is in YAML file. Example is in [`configs`](./configs/example.yaml)
 
 ### Integrated Editor
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1 (2026-04-06)
+
+- added `*` support for hass collector
+- added ctrl+s and back arrow for ace editor
+
 ## 0.4.0 (2026-04-06)
 
 - added `hass` collector
@@ -63,6 +68,7 @@
 
 - (sinks/gotify) add template support for gotify title, example:
     add in config:
+
     ```yml
     ...
     sinks:
@@ -71,6 +77,7 @@
           title: '{{ now "15:04" }}: report from machine'
     ...
     ```
+
     This will add hour and minute in title of gotify message.
 
 ## 0.2.1 (2024-01-04)
