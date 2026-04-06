@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -102,10 +103,18 @@ func (h *hassSource) fetchStates() {
 	}
 
 	for alias, entityID := range h.entities {
+		var addr string
 		// Use the internal Supervisor proxy to hit the Core API safely
-		url := fmt.Sprintf("http://supervisor/core/api/states/%s", entityID)
+		if entityID == "*" {
+			addr = "http://supervisor/core/api/states"
 
-		req, err := http.NewRequestWithContext(h.ctx, http.MethodGet, url, nil)
+		} else {
+			// Ensure the entity ID is URL-encoded
+			encodedEntityID := url.PathEscape(entityID)
+			addr = fmt.Sprintf("http://supervisor/core/api/states/%s", encodedEntityID)
+		}
+
+		req, err := http.NewRequestWithContext(h.ctx, http.MethodGet, addr, nil)
 		if err != nil {
 			continue
 		}
