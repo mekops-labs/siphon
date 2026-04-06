@@ -1,31 +1,28 @@
 package windy
 
 import (
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 )
 
 func TestWindySink_Send(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("expected POST, got %s", r.Method)
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
 		}
-		if r.URL.Path != "/test-api-key" {
-			t.Errorf("expected path /test-api-key, got %s", r.URL.Path)
+		if r.Header.Get("Authorization") != "Bearer test-password" {
+			t.Errorf("expected Authorization header, got %s", r.Header.Get("Authorization"))
+		}
+		if r.URL.RawQuery != "station=123&temp=22.5" {
+			t.Errorf("expected query ?station=123&temp=22.5, got %s", r.URL.RawQuery)
 		}
 
 		body, _ := io.ReadAll(r.Body)
-		var payload map[string]interface{}
-		json.Unmarshal(body, &payload)
-
-		if payload["temp"] != 22.5 {
-			t.Errorf("expected temp 22.5, got %v", payload["temp"])
-		}
-		if int(payload["station"].(float64)) != 123 {
-			t.Errorf("expected station 123, got %v", payload["station"])
+		if string(body) != "" {
+			t.Errorf("expected empty body, got %s", string(body))
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -33,13 +30,20 @@ func TestWindySink_Send(t *testing.T) {
 	defer ts.Close()
 
 	// Override for testing
-	oldURL := windyAPIURL
-	windyAPIURL = ts.URL + "/"
-	defer func() { windyAPIURL = oldURL }()
+	oldURL := windyHost
+	windyProto = "http"
+
+	windyURL, err := url.Parse(ts.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windyHost = windyURL.Host
+	windyPath = windyURL.Path
+	defer func() { windyHost = oldURL; windyProto = "https" }()
 
 	params := map[string]interface{}{
-		"apikey": "test-api-key",
-		"id":     123,
+		"password": "test-password",
+		"id":       123,
 	}
 
 	s, err := New(params, nil)
