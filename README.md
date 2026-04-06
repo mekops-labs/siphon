@@ -16,54 +16,67 @@ containerized service.
 
 ## Overview
 
-Overall architecture:
+Siphon uses a decoupled architecture where data collection, routing, and delivery are separated by an internal event bus.
 
 ```mermaid
 graph LR
-    subgraph Sources
-        A1[MQTT Topic]
-        A2[Local File]
-        A3[Shell Command]
+    subgraph Sources [Collectors]
+        A1[MQTT]
+        A2[File]
+        A3[Shell]
+        A4[Home Assistant]
+        A1 ~~~ A2 ~~~ A3 ~~~ A4
     end
 
-    subgraph Core_Engine[Siphon Core]
-        B[Parsers: JSONPath/Regex]
-        C{Data Hub}
-        D[Dispatchers: Cron/Event]
+    B((Internal Bus))
+
+    subgraph Processing [Pipelines]
+        C1[Extract: Parsers]
+        C2[Transform: expr]
+        C3[State Management]
+        C1 --> C2 --> C3
     end
 
-    subgraph Destinations
-        E1[REST / Gotify]
-        E2[MQTT / HA Discovery]
-        E3[CSV / File Sink]
+    subgraph Destinations [Sinks]
+        D1[REST / ntfy / Gotify]
+        D2[MQTT]
+        D3[File / CSV]
+        D4[Internal Bus]
+        D1 ~~~ D2 ~~~ D3 ~~~ D4
     end
 
-    A1 & A2 & A3 --> B
-    B --> C
-    C --> D
-    D --> E1 & E2 & E3
+    Sources -- publishes --> B
+    B -- triggers --> Processing
+    Processing -- dispatches --> Destinations
 ```
 
-Legend:
+### Key Components
 
-1. Collectors - collects data from configured sources
-    - MQTT - subscribes to configured topics and gathers the data
-    - File - gathers the data from files
-    - Shell - gets data from shell
-2. Parsers - convert data from source format into the intermediate value to be used by dispatcher/sink
-    - jsonpath - uses jsonpath to parse data
-    - regex - uses regular expression to parse data
-3. DataStore - main data structure, where data is held between publishing by collector and sending by dispatcher/sink
-4. Dispatchers - schedules which chunk of data will be dispatched
-    - cron: uses cron-like interface to schedule when which data should be dispatched
-    - event: event triggered (e.g. on value changed, on threshold)
-5. Sinks - dispatches the scheduled data to the sink
-    - REST-based sinks - for sinks using REST interface (e.g. gotify)
-    - file sink - for sinks using file interface (e.g. csv file writer)
+1. Collectors: Ingest data from external sources and publish raw payloads to the internal event bus.
+2. Internal Bus: A thread-safe pub/sub system that decouples data ingestion from processing.
+3. Pipelines (v2): The core processing logic.
+   - Extract: Uses Parsers (JSONPath, Regex) to pull specific values from payloads.
+   - Transform: Uses the expr engine to calculate new values or modify existing data.
+   - State: Supports Stateful processing to accumulate data over time (e.g., running averages or sums).
+   - Triggers: Can be Event-driven (immediate) or Cron-based (scheduled).
+4. Sinks: Deliver processed data to external services or back into the internal bus.
 
 ## Example configuration
 
 Configuration is in YAML file. Example is [here](./configs/example.yaml)
+
+### Integrated Editor
+
+Siphon features an integrated, web-based configuration editor powered by ace.js. This allows you to modify your
+pipelines, collectors, and sinks directly through a browser with syntax highlighting and validation.
+
+## Home Assistant Integration
+
+Siphon is designed to work seamlessly with Home Assistant.
+
+- Collector: Includes a dedicated `hass` collector to poll entity states.
+- Add-on: Siphon is available as a pre-packaged Home Assistant Add-on. See the [siphon-ha-addon](https://github.com/mekops-labs/siphon-ha-addon) repository for
+installation instructions.
 
 ### Environment variable substitution
 
@@ -112,9 +125,9 @@ an argument to the `siphon` application, where to look for it.
 
 ### Adding new modules
 
-Adding additional collectors, parsers, dispatchers and sinks is pretty much self-contained. Only necessary things is to
-add the module code itself and import it in `internal/modules/modules.go`. Take a look at the other modules as an
-example, like [file collector](pkg/collector/file/file.go).
+Adding additional collectors, parsers, and sinks is pretty much self-contained. Only necessary things is to add the
+module code itself and import it in `internal/modules/modules.go`. Take a look at the other modules as an example, like
+[file collector](pkg/collector/file/file.go).
 
 ## Dependencies
 
