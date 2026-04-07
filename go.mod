@@ -1,6 +1,6 @@
 module github.com/mekops-labs/siphon
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/PaesslerAG/jsonpath v0.1.1
@@ -23,5 +23,6 @@ require (
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.17.0 // indirect
 	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 )
