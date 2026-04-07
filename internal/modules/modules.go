@@ -15,6 +15,7 @@ import (
 	_ "github.com/mekops-labs/siphon/pkg/sink/bus"
 	_ "github.com/mekops-labs/siphon/pkg/sink/gotify"
 	_ "github.com/mekops-labs/siphon/pkg/sink/iotplotter"
+	_ "github.com/mekops-labs/siphon/pkg/sink/mqtt"
 	_ "github.com/mekops-labs/siphon/pkg/sink/ntfy"
 	_ "github.com/mekops-labs/siphon/pkg/sink/stdout"
 	_ "github.com/mekops-labs/siphon/pkg/sink/windy"
