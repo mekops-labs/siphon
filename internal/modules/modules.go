@@ -14,6 +14,7 @@ import (
 	_ "github.com/mekops-labs/siphon/pkg/parser/regex"
 	_ "github.com/mekops-labs/siphon/pkg/sink/bus"
 	_ "github.com/mekops-labs/siphon/pkg/sink/gotify"
+	_ "github.com/mekops-labs/siphon/pkg/sink/hass"
 	_ "github.com/mekops-labs/siphon/pkg/sink/iotplotter"
 	_ "github.com/mekops-labs/siphon/pkg/sink/mqtt"
 	_ "github.com/mekops-labs/siphon/pkg/sink/ntfy"
