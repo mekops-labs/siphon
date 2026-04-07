@@ -58,6 +58,15 @@ func NewRunner(b bus.Bus, sinks map[string]sink.Sink) *Runner {
 	}
 }
 
+// Close gracefully shuts down all sinks managed by the runner
+func (r *Runner) Close() {
+	for name, s := range r.sinks {
+		if err := s.Close(); err != nil {
+			log.Printf("Failed to close sink '%s': %v", name, err)
+		}
+	}
+}
+
 // Start initializes all configured pipelines
 func (r *Runner) Start(ctx context.Context, pipelines []config.PipelineConfig) {
 	for _, pCfg := range pipelines {

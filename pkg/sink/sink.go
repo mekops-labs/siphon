@@ -4,6 +4,7 @@ import "github.com/mekops-labs/siphon/pkg/bus"
 
 type Sink interface {
 	Send(b []byte) error
+	Close() error
 }
 
 type SinkCfg struct {

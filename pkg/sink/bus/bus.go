@@ -41,3 +41,8 @@ func (b *bus) Send(data []byte) error {
 	b.bus.Publish(b.params.Topic, data)
 	return nil
 }
+
+func (b *bus) Close() error {
+	// No resources to clean up for the bus sink
+	return nil
+}

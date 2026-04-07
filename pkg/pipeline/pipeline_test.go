@@ -18,6 +18,7 @@ import (
 type mockSink struct{}
 
 func (m *mockSink) Send(b []byte) error { return nil }
+func (m *mockSink) Close() error        { return nil }
 
 // mockParser implements parser.Parser for testing
 type mockParser struct{}
@@ -548,6 +549,8 @@ func (m *mockSinkWithChannel) Send(b []byte) error {
 	m.received <- b
 	return nil
 }
+
+func (m *mockSinkWithChannel) Close() error { return nil }
 
 // mockJSONParser implements parser.Parser for testing JSON extraction
 type mockJSONParser struct {

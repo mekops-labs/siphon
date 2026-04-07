@@ -81,3 +81,7 @@ func (s *plotterSink) Send(b []byte) error {
 
 	return nil
 }
+
+func (s *plotterSink) Close() error { // No persistent connections to close for the iotplotter sink
+	return nil
+}

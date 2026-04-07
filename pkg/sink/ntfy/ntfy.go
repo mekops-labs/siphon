@@ -117,3 +117,7 @@ func (s *ntfySink) Send(b []byte) error {
 
 	return nil
 }
+
+func (s *ntfySink) Close() error { // No persistent connections to close for the ntfy sink
+	return nil
+}

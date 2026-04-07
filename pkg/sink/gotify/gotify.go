@@ -117,3 +117,7 @@ func (s *gotifySink) Send(b []byte) error {
 
 	return nil
 }
+
+func (s *gotifySink) Close() error { // No persistent connections to close for the gotify sink
+	return nil
+}

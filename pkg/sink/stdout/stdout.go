@@ -23,3 +23,7 @@ func (*stdout) Send(b []byte) error {
 	fmt.Println(string(b))
 	return nil
 }
+
+func (*stdout) Close() error {
+	return nil
+}

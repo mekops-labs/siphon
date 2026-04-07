@@ -97,3 +97,7 @@ func (s *windySink) Send(b []byte) error {
 
 	return nil
 }
+
+func (s *windySink) Close() error { // No persistent connections to close for the windy sink
+	return nil
+}
