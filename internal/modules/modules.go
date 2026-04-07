@@ -7,6 +7,7 @@ import (
 	_ "github.com/mekops-labs/siphon/pkg/collector/file"
 	_ "github.com/mekops-labs/siphon/pkg/collector/hass"
 	_ "github.com/mekops-labs/siphon/pkg/collector/mqtt"
+	_ "github.com/mekops-labs/siphon/pkg/collector/rest"
 	_ "github.com/mekops-labs/siphon/pkg/collector/shell"
 	_ "github.com/mekops-labs/siphon/pkg/parser/jsonpath"
 	_ "github.com/mekops-labs/siphon/pkg/parser/regex"
