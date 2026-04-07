@@ -128,10 +128,7 @@ func TestHassSink_Close(t *testing.T) {
 func TestDiscoveryPayload(t *testing.T) {
 	// This tests the logic inside New that builds the configPayload
 	opt := hassParams{
-		ObjectID:    "power_meter",
-		Name:        "Total Power",
-		Component:   "sensor",
-		DeviceClass: "power",
+		Name: "Total Power",
 	}
 
 	// Mimic the logic in New()
