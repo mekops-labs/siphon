@@ -115,8 +115,12 @@ func TestWebhookCollector_Integration(t *testing.T) {
 		// Send payload1 again immediately
 		req, _ := http.NewRequest(http.MethodPost, baseURL, strings.NewReader("payload1"))
 		req.Header.Set("Authorization", "Bearer secret")
-		resp, _ := http.DefaultClient.Do(req)
-		defer resp.Body.Close()
+		resp, err := http.DefaultClient.Do(req)
+		if resp == nil {
+			t.Errorf("request failed: %v", err)
+		} else {
+			defer resp.Body.Close()
+		}
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("expected 200 OK for duplicate, got %d", resp.StatusCode)
@@ -133,7 +137,10 @@ func TestWebhookCollector_Integration(t *testing.T) {
 
 	t.Run("Unauthorized", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodPost, baseURL, strings.NewReader("unauth"))
-		resp, _ := http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusUnauthorized {
@@ -146,7 +153,10 @@ func TestWebhookCollector_Integration(t *testing.T) {
 		largePayload := make([]byte, 1*1024*1024+1024)
 		req, _ := http.NewRequest(http.MethodPost, baseURL, bytes.NewReader(largePayload))
 		req.Header.Set("Authorization", "Bearer secret")
-		resp, _ := http.DefaultClient.Do(req)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
 		defer resp.Body.Close()
 
 		// http.MaxBytesReader results in a 413 Request Entity Too Large
