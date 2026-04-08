@@ -1,5 +1,6 @@
 # Siphon Configuration Example
 # This file demonstrates the core features: Extraction, Transformation, State Management, and Triggering.
+version: 2
 
 # ==============================================================================
 # 1. COLLECTORS
@@ -13,7 +14,15 @@ collectors:
       interval: 1 # Polling interval in seconds (default is 10)
     topics:
       # For shell collectors, the topic value is the command to execute.
-      temp: "echo '{ \"temp\": 23.5, \"ts\":' $(date +%s) '}'"
+      temperature: "echo '{ \"temp\": 23.5, \"ts\":' $(date +%s) '}'"
+
+  wtr:
+    type: rest
+    params:
+      interval: 5 # Polling interval in seconds (default is 10)
+    topics:
+      current: "https://wttr.in/?format=%C"
+
   file:
     type: file
     params:
@@ -38,13 +47,13 @@ pipelines:
       # Regex parser to extract the first number (uptime in seconds) from the /proc/uptime output.
       type: regex
       vars:
-        uptime: "^(\\d+\\.\\d+)\\s"
+        up: "^(\\d+\\.\\d+)\\s"
     transform:
-      uptime: "int(float(uptime))"
+      - up: "int(float(up))" # Convert extracted uptime string to an integer (seconds)
 
   - name: process_temp
     topics:
-      - temp
+      - temperature
     bus_mode: volatile
     parser:
       # JSONPath parser to extract 'temp' and 'ts' from the JSON string produced by the shell command.
@@ -53,32 +62,47 @@ pipelines:
         temp: "$.temp"
         ts:   "$.ts"
     transform:
-      temp: "temp * 10"
-      ts: "int(ts)"
-      tempStr: "string(temp/10) + '°C'"
+      - temp: "temp * 10"
+      - ts: "int(ts)"
+      - tempStr: "string(temp/10) + '°C'"
+
+  - name: process_weather
+    topics:
+      - current
+    bus_mode: volatile
+    parser:
+      type: regex
+      vars:
+        weather: "^(.*)$"
 
   # TIME-DRIVEN PIPELINE (Stateful)
   # Triggers on a schedule (every second) and can access the latest values of multiple topics from the bus.
   - name: report
     stateful: true
     type: cron
-    schedule: "0/1 * * * * *" # Every second
+    schedule: "0/3 * * * * *" # Every second
     topics:
       - process_uptime
       - process_temp
+      - process_weather
+    transform:
+      - tempSum: "(tempSum ?? 0) + process_temp?.temp ?? 0" # This variable will accumulate the sum of all temperature readings over time.
+      - eventCount: "(eventCount ?? 0) + 1" # Event count will accumulate how many events we received
     sinks:
       - name: stdout
         # The 'expr' format allows us to compute a new payload using the latest values of 'uptime', 'temp', and 'ts' from the bus.
         format: expr
         spec: |
           {
-            "uptime": uptime ?? 0,
-            "temp": temp,
-            "ts": ts,
+            "uptime": process_uptime?.up ?? 0,
+            "temp": process_temp?.temp ?? 0,
+            "ts": process_temp?.ts ?? 0,
+            "count": eventCount,
+            "tempSum": tempSum ?? 0,
             "now": now()
           }
       - name: stdout
         # The 'template' format allows us to create a human-readable message using the latest 'tempStr' value from the bus.
         format: template
-        spec: |
-          Current temperature: {{ .tempStr }}
+        spec: |>
+          Current weather: {{ .process_weather.weather }}, {{ .process_temp.tempStr }}

@@ -37,8 +37,8 @@ type PipelineConfig struct {
 	Schedule string   `yaml:"schedule,omitempty"`
 	Topics   []string `yaml:"topics,omitempty"`
 
-	Parser    *ParserConfig     `yaml:"parser,omitempty"`
-	Transform map[string]string `yaml:"transform,omitempty"`
+	Parser    *ParserConfig       `yaml:"parser,omitempty"`
+	Transform []map[string]string `yaml:"transform,omitempty"`
 
 	Sinks []PipelineSinkConfig `yaml:"sinks"`
 }

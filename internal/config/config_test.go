@@ -28,7 +28,7 @@ pipelines:
       vars:
         val: "$.data"
     transform:
-      status: "ok"
+      - status: "ok"
     dispatch:
       type: "event"
       sinks:
@@ -64,7 +64,7 @@ pipelines:
 			t.Errorf("Parser configuration mismatch")
 		}
 
-		if p.Transform["status"] != "ok" {
+		if p.Transform[0]["status"] != "ok" {
 			t.Errorf("Transform configuration mismatch")
 		}
 	})
