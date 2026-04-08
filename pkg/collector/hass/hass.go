@@ -64,9 +64,7 @@ func New(p any) collector.Collector {
 func (h *hassSource) RegisterTopic(alias, topic string) {
 	h.lock.Lock()
 	defer h.lock.Unlock()
-	// In the context of the HASS API, the "topic" is the Home Assistant entity_id
 	h.entities[alias] = topic
-	log.Printf("HASS Collector registered alias '%s' for entity '%s'", alias, topic)
 }
 
 func (h *hassSource) Start(b bus.Bus) {

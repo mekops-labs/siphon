@@ -73,9 +73,7 @@ func New(p any) collector.Collector {
 func (r *restSource) RegisterTopic(alias, topic string) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-	// For the REST collector, the 'topic' is the target URL
 	r.urls[alias] = topic
-	log.Printf("REST Collector registered alias '%s' for URL '%s'", alias, topic)
 }
 
 func (r *restSource) Start(b bus.Bus) {
