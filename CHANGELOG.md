@@ -2,6 +2,7 @@
 
 ## Unrealeased
 
+- add editor status line and display version
 - add hot reload support
 - changed the transform block to array (for proper transformation ordering)
 - added topic as selector for variables

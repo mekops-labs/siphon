@@ -1,0 +1,283 @@
+# ==============================================================================
+# Siphon — Home Assistant Sensor Example
+#
+# This configuration pulls real data from three sources that work in any
+# Linux environment and publishes the results as native Home Assistant sensors
+# via MQTT Auto-Discovery.
+#
+# Data sources
+#   1. REST  — Open-Meteo public weather API (no API key, no account needed)
+#   2. Shell — host memory and disk usage read from the OS
+#   3. File  — system load average from /proc/loadavg
+#
+# All six computed values appear in HA grouped under one "Siphon ETL Engine"
+# device, with correct device classes, units, and icons.
+#
+# Requirements
+#   - Access to an MQTT broker configured in Home Assistant
+#     (e.g. the official Mosquitto add-on)
+#
+# Environment variables (set via the add-on config or Docker -e flags)
+#   MQTT_HOST      — broker hostname or IP  (e.g. "core-mosquitto" or "192.168.1.10")
+#   MQTT_PORT      — broker port            (default: 1883)
+#   MQTT_USER      — broker username
+#   MQTT_PASS      — broker password
+# ==============================================================================
+version: 2
+
+# ------------------------------------------------------------------------------
+# COLLECTORS
+# ------------------------------------------------------------------------------
+collectors:
+
+  # ---- 1. Weather data via Open-Meteo REST API --------------------------------
+  # Open-Meteo is a free, open-source weather API — no registration required.
+  # The URL returns a JSON object with a "current" block containing the fields
+  # we requested as query parameters.
+  #
+  # Example response:
+  #   {
+  #     "current": {
+  #       "temperature_2m": 14.5,        <- °C at 2 m height
+  #       "relative_humidity_2m": 65,    <- %
+  #       "wind_speed_10m": 18.2,        <- km/h at 10 m height
+  #       "weather_code": 3              <- WMO code (0=clear … 99=thunderstorm)
+  #     }
+  #   }
+  #
+  # Location hardcoded to Gdańsk, Poland (54.35°N, 18.65°E).
+  # To use a different location, update the latitude/longitude query parameters.
+  weather_api:
+    type: rest
+    params:
+      interval: 300  # Refresh every 5 minutes — the API updates hourly
+    topics:
+      current_weather: "https://api.open-meteo.com/v1/forecast?latitude=54.35&longitude=18.65&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code"
+
+  # ---- 2. Host system metrics via shell commands ------------------------------
+  # These commands run inside the container / host that Siphon is running on.
+  # They emit a plain number on stdout, which the regex parser extracts below.
+  system_metrics:
+    type: shell
+    params:
+      interval: 60  # Every minute
+    topics:
+      # Memory usage % — reads /proc/meminfo directly (works without the "free"
+      # utility; MemAvailable is what the kernel considers actually free).
+      memory_usage: >-
+        awk '/MemAvailable/{a=$2}/MemTotal/{t=$2}END{printf "%.1f",(1-a/t)*100}' /proc/meminfo
+
+      # Root filesystem usage % — strips the trailing "%" from df output.
+      disk_usage: "df / | awk 'NR==2{print $5}' | tr -d '%'"
+
+  # ---- 3. System load average from /proc/loadavg (file collector) -------------
+  # /proc/loadavg contains five space-separated values:
+  #   <1-min> <5-min> <15-min> <running/total tasks> <last PID>
+  # Example: "0.52 0.48 0.44 2/1234 5678"
+  # The file collector publishes the raw content; the regex parser picks the
+  # 1-minute average in the pipeline below.
+  proc_files:
+    type: file
+    params:
+      interval: 60
+    topics:
+      load_average: "/proc/loadavg"
+
+# ------------------------------------------------------------------------------
+# SINKS
+# All use the "hass" sink type which:
+#   - Connects to the MQTT broker on startup
+#   - Publishes an Auto-Discovery config so HA registers the entity automatically
+#   - Uses MQTT Last-Will so HA marks entities "unavailable" if Siphon stops
+#   - Groups all entities under a single "Siphon ETL Engine" device
+# ------------------------------------------------------------------------------
+sinks:
+
+  # Weather-derived sensors
+  ha_temperature:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "outdoor_temperature"
+      name:                "Outdoor Temperature"
+      device_class:        "temperature"
+      state_class:         "measurement"
+      unit_of_measurement: "°C"
+      icon:                "mdi:thermometer"
+
+  ha_humidity:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "outdoor_humidity"
+      name:                "Outdoor Humidity"
+      device_class:        "humidity"
+      state_class:         "measurement"
+      unit_of_measurement: "%"
+      icon:                "mdi:water-percent"
+
+  ha_wind_speed:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "outdoor_wind_speed"
+      name:                "Outdoor Wind Speed"
+      device_class:        "wind_speed"
+      state_class:         "measurement"
+      unit_of_measurement: "km/h"
+      icon:                "mdi:weather-windy"
+
+  # Host system sensors
+  ha_memory:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "host_memory_usage"
+      name:                "Host Memory Usage"
+      # No standard device_class for generic percentage — leave unset.
+      state_class:         "measurement"
+      unit_of_measurement: "%"
+      icon:                "mdi:memory"
+
+  ha_disk:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "host_disk_usage"
+      name:                "Host Disk Usage"
+      state_class:         "measurement"
+      unit_of_measurement: "%"
+      icon:                "mdi:harddisk"
+
+  ha_load:
+    type: hass
+    params:
+      url:  "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      user: "%%MQTT_USER%%"
+      pass: "%%MQTT_PASS%%"
+      object_id:           "host_load_average"
+      name:                "Host Load Average (1m)"
+      state_class:         "measurement"
+      # Load average is dimensionless; no standard HA unit — use empty string.
+      unit_of_measurement: ""
+      icon:                "mdi:gauge"
+      
+# ------------------------------------------------------------------------------
+# PIPELINES
+# ------------------------------------------------------------------------------
+pipelines:
+
+  # ---- Pipeline 1: weather data → three HA sensors ----------------------------
+  # Fires each time the REST collector refreshes the Open-Meteo response.
+  # A single pipeline dispatches to all three weather-related sinks so we only
+  # parse the JSON once.
+  - name: process_weather
+    topics:
+      - current_weather
+    bus_mode: volatile
+
+    parser:
+      # The Open-Meteo JSON nests all current values under "current".
+      # JSONPath extracts each field directly as a number (no casting needed).
+      type: jsonpath
+      vars:
+        temp:     "$.current.temperature_2m"
+        humidity: "$.current.relative_humidity_2m"
+        wind:     "$.current.wind_speed_10m"
+
+    transform:
+      # Round to one decimal place for clean HA display.
+      - temp:     "float(temp)"
+      - humidity: "float(humidity)"
+      - wind:     "float(wind)"
+
+    sinks:
+      # Each sink receives the value it needs via an "expr" spec.
+      # The expr evaluates against the pipeline state and must return a string
+      # because HA state topics are plain text.
+      - name: ha_temperature
+        format: expr
+        spec: "temp"
+
+      - name: ha_humidity
+        format: expr
+        spec: "humidity"
+
+      - name: ha_wind_speed
+        format: expr
+        spec: "wind"
+      
+  # ---- Pipeline 2: host memory usage ------------------------------------------
+  # The shell command outputs a plain float like "42.7".
+  # The regex parser wraps it in a named capture group so it becomes available
+  # as a variable in the transform step.
+  - name: process_memory
+    topics:
+      - memory_usage
+    bus_mode: volatile
+
+    parser:
+      type: regex
+      vars:
+        # Match the full decimal number at the start of the output.
+        usage: "^(\\d+\\.?\\d*)"
+
+    transform:
+      - usage: "float(usage)"
+
+    sinks:
+      - name: ha_memory
+        format: expr
+        spec: "usage"
+      
+  # ---- Pipeline 3: root disk usage --------------------------------------------
+  # Same pattern as memory — the shell command already strips the "%" sign, so
+  # the output is a plain integer like "67".
+  - name: process_disk
+    topics:
+      - disk_usage
+    bus_mode: volatile
+
+    parser:
+      type: regex
+      vars:
+        usage: "^(\\d+)"
+
+    transform:
+      - usage: "int(usage)"
+
+    sinks:
+      - name: ha_disk
+        format: expr
+        spec: "usage"
+    
+  # ---- Pipeline 4: 1-minute load average --------------------------------------
+  # /proc/loadavg content: "0.52 0.48 0.44 2/1234 5678\n"
+  # The regex captures only the first (1-minute) value.
+  - name: process_load
+    topics:
+      - load_average
+    bus_mode: volatile
+
+    parser:
+      type: regex
+      vars:
+        load: "^(\\d+\\.\\d+)"
+
+    transform:
+      - load: "float(load)"
+
+    sinks:
+      - name: ha_load
+        format: expr
+        spec: "load"

@@ -31,3 +31,4 @@ go.work.sum
 # yaml test files
 *.yaml
 !.ko.yaml
+!configs/*.yaml
