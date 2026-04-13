@@ -3,5 +3,13 @@
     "image": "mcr.microsoft.com/devcontainers/go:1.25",
     "features": {
         "ghcr.io/robbert229/devcontainer-features/ko:1": {}
+    },
+    "mounts": [
+        "source=${localEnv:HOME}/.gnupg,target=/home/vscode/.gnupg,type=bind",
+        "source=${localEnv:XDG_RUNTIME_DIR}/gnupg,target=${localEnv:XDG_RUNTIME_DIR}/gnupg,type=bind"
+    ],
+    "remoteUser": "vscode",
+    "containerEnv": {
+        "GNUPGHOME": "/home/vscode/.gnupg"
     }
 }
