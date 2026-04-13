@@ -1,6 +1,6 @@
 # Changelog
 
-## Unrealeased
+## 0.5.0 (2026-04-13)
 
 - add editor status line and display version
 - add hot reload support
