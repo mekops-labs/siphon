@@ -2,6 +2,7 @@
 
 ## Unrealeased
 
+- add hot reload support
 - changed the transform block to array (for proper transformation ordering)
 - added topic as selector for variables
 - added `rest` and `webhook` collectors

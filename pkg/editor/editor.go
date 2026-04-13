@@ -2,6 +2,7 @@ package editor
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -12,14 +13,11 @@ import (
 //go:embed index.html
 var ui embed.FS
 
-// Start launches a standalone web server serving the Ace.js editor.
-func Start(port int, configPath string) {
+func newMux(configPath string, reload chan<- struct{}, status *Status) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// 1. Serve the embedded HTML UI
 	mux.Handle("/", http.FileServer(http.FS(ui)))
 
-	// 2. API Endpoint to Read/Write the YAML file
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 
@@ -41,14 +39,18 @@ func Start(port int, configPath string) {
 				return
 			}
 
-			// Save the file
 			if err := os.WriteFile(configPath, body, 0644); err != nil {
 				log.Printf("Editor: Failed to write config (%s): %v", configPath, err)
 				http.Error(w, "Failed to save file", http.StatusInternalServerError)
 				return
 			}
 
-			log.Println("Editor: config.yaml updated via Web UI")
+			log.Println("Editor: config.yaml updated via Web UI — signalling reload")
+			select {
+			case reload <- struct{}{}:
+			default:
+			}
+
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("Saved"))
 
@@ -56,6 +58,24 @@ func Start(port int, configPath string) {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
+
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		ok, message := status.Get()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":      ok,
+			"message": message,
+		})
+	})
+
+	return mux
+}
+
+// Start launches the config editor web server. It runs for the lifetime of the
+// process and is intentionally independent of the engine lifecycle, so it
+// remains reachable even when the engine fails to start due to config errors.
+func Start(port int, configPath string, reload chan<- struct{}, status *Status) {
+	mux := newMux(configPath, reload, status)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("Starting embedded config editor on http://%s", addr)
