@@ -13,7 +13,7 @@ import (
 //go:embed index.html
 var ui embed.FS
 
-func newMux(configPath string, reload chan<- struct{}, status *Status) *http.ServeMux {
+func newMux(configPath string, reload chan<- struct{}, status *Status, version string) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.FileServer(http.FS(ui)))
@@ -59,12 +59,25 @@ func newMux(configPath string, reload chan<- struct{}, status *Status) *http.Ser
 		}
 	})
 
+	mux.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"version": version})
+	})
+
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		ok, message := status.Get()
+		snap := status.Get()
+		warnings := snap.Warnings
+		if warnings == nil {
+			warnings = []string{}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"ok":      ok,
-			"message": message,
+			"ok":              snap.OK,
+			"message":         snap.Message,
+			"pipeline_count":  snap.PipelineCount,
+			"collector_count": snap.CollectorCount,
+			"sink_count":      snap.SinkCount,
+			"warnings":        warnings,
 		})
 	})
 
@@ -74,8 +87,8 @@ func newMux(configPath string, reload chan<- struct{}, status *Status) *http.Ser
 // Start launches the config editor web server. It runs for the lifetime of the
 // process and is intentionally independent of the engine lifecycle, so it
 // remains reachable even when the engine fails to start due to config errors.
-func Start(port int, configPath string, reload chan<- struct{}, status *Status) {
-	mux := newMux(configPath, reload, status)
+func Start(port int, configPath string, reload chan<- struct{}, status *Status, version string) {
+	mux := newMux(configPath, reload, status, version)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
 	log.Printf("Starting embedded config editor on http://%s", addr)

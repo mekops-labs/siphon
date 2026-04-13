@@ -67,25 +67,28 @@ func (r *Runner) Close() {
 	}
 }
 
-// Start initializes all configured pipelines
-func (r *Runner) Start(ctx context.Context, pipelines []config.PipelineConfig) {
+// Start initializes all configured pipelines. It returns the number of
+// pipelines that started successfully and a slice of warning strings for
+// any pipelines that failed to compile.
+func (r *Runner) Start(ctx context.Context, pipelines []config.PipelineConfig) (started int, warnings []string) {
 	for _, pCfg := range pipelines {
 		cp, err := r.compile(pCfg)
 		if err != nil {
 			log.Printf("Failed to compile pipeline '%s': %v", pCfg.Name, err)
+			warnings = append(warnings, fmt.Sprintf("pipeline %q: %v", pCfg.Name, err))
 			continue
 		}
 
 		if pCfg.Type == "cron" {
 			log.Printf("Pipeline [%s]: Cron active with schedule '%s'", pCfg.Name, pCfg.Schedule)
 			go r.runCronPipeline(ctx, cp)
-			continue
+		} else {
+			log.Printf("Pipeline [%s]: event-triggered type active", pCfg.Name)
+			go r.runEventPipeline(ctx, cp)
 		}
-
-		// Event-driven pipeline
-		log.Printf("Pipeline [%s]: event-triggered type active", pCfg.Name)
-		go r.runEventPipeline(ctx, cp)
+		started++
 	}
+	return started, warnings
 }
 
 // compile prepares the expr programs and templates so they don't re-compile on every event

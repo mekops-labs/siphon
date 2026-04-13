@@ -28,7 +28,7 @@ func TestConfigGet_Success(t *testing.T) {
 	path := setupConfig(t, content)
 
 	reload := make(chan struct{}, 1)
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w := httptest.NewRecorder()
@@ -47,7 +47,7 @@ func TestConfigGet_Success(t *testing.T) {
 
 func TestConfigGet_FileMissing(t *testing.T) {
 	reload := make(chan struct{}, 1)
-	mux := newMux("/nonexistent/path/config.yaml", reload, NewStatus())
+	mux := newMux("/nonexistent/path/config.yaml", reload, NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/config", nil)
 	w := httptest.NewRecorder()
@@ -63,7 +63,7 @@ func TestConfigGet_FileMissing(t *testing.T) {
 func TestConfigPost_Success(t *testing.T) {
 	path := setupConfig(t, "version: 2\n")
 	reload := make(chan struct{}, 1)
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	newContent := "version: 2\n# updated\n"
 	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(newContent))
@@ -90,7 +90,7 @@ func TestConfigPost_Success(t *testing.T) {
 func TestConfigPost_TriggersReload(t *testing.T) {
 	path := setupConfig(t, "version: 2\n")
 	reload := make(chan struct{}, 1)
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader("version: 2\n"))
 	mux.ServeHTTP(httptest.NewRecorder(), req)
@@ -109,7 +109,7 @@ func TestConfigPost_DoesNotBlockWhenReloadPending(t *testing.T) {
 	reload := make(chan struct{}, 1)
 	reload <- struct{}{} // pre-fill the buffer
 
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	done := make(chan struct{})
 	go func() {
@@ -129,7 +129,7 @@ func TestConfigPost_DoesNotBlockWhenReloadPending(t *testing.T) {
 func TestConfigPost_EmptyBody(t *testing.T) {
 	path := setupConfig(t, "version: 2\n")
 	reload := make(chan struct{}, 1)
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(""))
 	w := httptest.NewRecorder()
@@ -154,7 +154,7 @@ func TestConfigPost_ReadOnlyFile(t *testing.T) {
 	t.Cleanup(func() { os.Chmod(path, 0644) })
 
 	reload := make(chan struct{}, 1)
-	mux := newMux(path, reload, NewStatus())
+	mux := newMux(path, reload, NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader("version: 2\n"))
 	w := httptest.NewRecorder()
@@ -178,7 +178,7 @@ func TestConfigEndpoint_MethodNotAllowed(t *testing.T) {
 	for _, method := range []string{http.MethodPut, http.MethodDelete, http.MethodPatch} {
 		t.Run(method, func(t *testing.T) {
 			path := setupConfig(t, "version: 2\n")
-			mux := newMux(path, make(chan struct{}, 1), NewStatus())
+			mux := newMux(path, make(chan struct{}, 1), NewStatus(), "test")
 
 			req := httptest.NewRequest(method, "/api/config", nil)
 			w := httptest.NewRecorder()
@@ -196,7 +196,7 @@ func TestConfigEndpoint_MethodNotAllowed(t *testing.T) {
 func TestStatusEndpoint_OK(t *testing.T) {
 	status := NewStatus()
 	status.Set(true, "Running")
-	mux := newMux("/any", make(chan struct{}, 1), status)
+	mux := newMux("/any", make(chan struct{}, 1), status, "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	w := httptest.NewRecorder()
@@ -221,7 +221,7 @@ func TestStatusEndpoint_OK(t *testing.T) {
 func TestStatusEndpoint_Error(t *testing.T) {
 	status := NewStatus()
 	status.Set(false, "config error: bad yaml")
-	mux := newMux("/any", make(chan struct{}, 1), status)
+	mux := newMux("/any", make(chan struct{}, 1), status, "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	w := httptest.NewRecorder()
@@ -239,7 +239,7 @@ func TestStatusEndpoint_Error(t *testing.T) {
 }
 
 func TestStatusEndpoint_ContentType(t *testing.T) {
-	mux := newMux("/any", make(chan struct{}, 1), NewStatus())
+	mux := newMux("/any", make(chan struct{}, 1), NewStatus(), "test")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/status", nil)
 	w := httptest.NewRecorder()
@@ -252,7 +252,7 @@ func TestStatusEndpoint_ContentType(t *testing.T) {
 
 func TestStatusEndpoint_ReflectsUpdates(t *testing.T) {
 	status := NewStatus()
-	mux := newMux("/any", make(chan struct{}, 1), status)
+	mux := newMux("/any", make(chan struct{}, 1), status, "test")
 
 	check := func(wantOK bool, wantMsg string) {
 		t.Helper()

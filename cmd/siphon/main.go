@@ -37,7 +37,7 @@ func main() {
 	// The editor starts unconditionally and runs for the entire process lifetime.
 	// This ensures it stays reachable even when the engine fails due to config errors.
 	if *editorPort > 0 {
-		go editor.Start(*editorPort, configPath, reload, status)
+		go editor.Start(*editorPort, configPath, reload, status, version)
 	}
 
 	sigs := make(chan os.Signal, 1)
@@ -81,13 +81,17 @@ func startEngine(configPath string, status *editor.Status) (context.CancelFunc, 
 		return noop, noop
 	}
 
+	var warnings []string
+
 	eventBus := bus.NewMemoryBus()
 
 	collectors := make(map[string]collector.Collector)
 	for name, colCfg := range cfg.Collectors {
 		collectorInit, ok := collector.Registry[colCfg.Type]
 		if !ok {
-			log.Printf("unknown collector type: %s", colCfg.Type)
+			w := fmt.Sprintf("collector %q: unknown type %q", name, colCfg.Type)
+			log.Print(w)
+			warnings = append(warnings, w)
 			continue
 		}
 		c := collectorInit(colCfg.Params)
@@ -102,12 +106,16 @@ func startEngine(configPath string, status *editor.Status) (context.CancelFunc, 
 	for name, sinkCfg := range cfg.Sinks {
 		sinkInit, ok := sink.Registry[sinkCfg.Type]
 		if !ok {
-			log.Printf("unknown sink type: %s", sinkCfg.Type)
+			w := fmt.Sprintf("sink %q: unknown type %q", name, sinkCfg.Type)
+			log.Print(w)
+			warnings = append(warnings, w)
 			continue
 		}
 		s, err := sinkInit(sinkCfg.Params, eventBus)
 		if err != nil {
+			w := fmt.Sprintf("sink %q: %v", name, err)
 			log.Printf("can't initialize sink %s: %v", name, err)
+			warnings = append(warnings, w)
 			continue
 		}
 		sinks[name] = s
@@ -117,13 +125,14 @@ func startEngine(configPath string, status *editor.Status) (context.CancelFunc, 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	runner := pipeline.NewRunner(eventBus, sinks)
-	runner.Start(ctx, cfg.Pipelines)
+	pipelineCount, pipelineWarnings := runner.Start(ctx, cfg.Pipelines)
+	warnings = append(warnings, pipelineWarnings...)
 
 	for _, c := range collectors {
 		go c.Start(eventBus)
 	}
 
-	status.Set(true, "Running")
+	status.SetRunning(pipelineCount, len(collectors), len(sinks), warnings)
 	log.Print("Engine started successfully")
 
 	return cancel, func() {

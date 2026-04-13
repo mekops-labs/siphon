@@ -12,8 +12,11 @@
         #header h1 a { color: white; text-decoration: none; padding: 0 10px; border-radius: 4px; transition: background 0.2s; font-size: 22px; cursor: pointer; }
         #header h1 a:hover { background: rgba(255,255,255,0.2); }
         #status-bar { padding: 8px 20px; font-size: 13px; font-weight: bold; display: none; }
-        #status-bar.ok    { background: #27ae60; color: white; display: block; }
-        #status-bar.error { background: #c0392b; color: white; display: block; }
+        #status-bar.ok      { background: #27ae60; color: white; display: block; }
+        #status-bar.warning { background: #e67e22; color: white; display: block; }
+        #status-bar.error   { background: #c0392b; color: white; display: block; }
+        #status-bar .warning-list { margin: 4px 0 0 0; padding: 0 0 0 20px; font-weight: normal; font-size: 12px; }
+        #status-bar .warning-list li { margin: 2px 0; }
         #editor { flex-grow: 1; }
         button { background: #3498db; border: none; color: white; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
         button:hover { background: #2980b9; }
@@ -35,7 +38,7 @@
     <div id="header">
         <h1>
             <a href="javascript:history.back()" title="Back">←</a>
-            Siphon Pipeline Editor
+            Siphon Pipeline Editor <span id="version" style="font-size:13px; font-weight:normal; opacity:0.7;"></span>
             <span id="save-status"></span>
         </h1>
         <div style="display: flex; gap: 10px;">
@@ -144,18 +147,48 @@
             });
         }
 
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
         function pollEngineStatus() {
             fetch('./api/status')
                 .then(r => r.json())
                 .then(data => {
                     const bar = document.getElementById('status-bar');
-                    bar.className = data.ok ? 'ok' : 'error';
-                    bar.innerText = data.ok
-                        ? '✔ Engine running'
-                        : '✖ Engine error: ' + data.message;
+                    const warnings = data.warnings || [];
+
+                    if (data.ok) {
+                        function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+                        const summary = [
+                            plural(data.pipeline_count,  'pipeline'),
+                            plural(data.collector_count, 'collector'),
+                            plural(data.sink_count,      'sink'),
+                        ].join(' · ');
+                        bar.className = warnings.length > 0 ? 'warning' : 'ok';
+                        let html = '<div>✔ Engine running · ' + summary + '</div>';
+                        if (warnings.length > 0) {
+                            html += '<ul class="warning-list">' +
+                                warnings.map(w => '<li>⚠ ' + escapeHtml(w) + '</li>').join('') +
+                                '</ul>';
+                        }
+                        bar.innerHTML = html;
+                    } else {
+                        bar.className = 'error';
+                        bar.innerText = '✖ Engine error: ' + data.message;
+                    }
                 })
                 .catch(() => {});
         }
+
+        fetch('./api/version')
+            .then(r => r.json())
+            .then(data => {
+                if (data.version) {
+                    document.getElementById('version').innerText = 'v' + data.version;
+                }
+            })
+            .catch(() => {});
 
         loadConfig();
         pollEngineStatus();
