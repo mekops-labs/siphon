@@ -122,8 +122,8 @@ func TestWebhookCollector_Integration(t *testing.T) {
 			defer resp.Body.Close()
 		}
 
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("expected 200 OK for duplicate, got %d", resp.StatusCode)
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("expected 409 for duplicate, got %d", resp.StatusCode)
 		}
 
 		// Nothing should be published to the bus for the duplicate
