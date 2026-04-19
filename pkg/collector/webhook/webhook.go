@@ -24,7 +24,7 @@ type webhookParams struct {
 	MaxBodyMB int64   `mapstructure:"max_body_mb"`
 	RPS       float64 `mapstructure:"rps"`
 	Burst     int     `mapstructure:"burst"`
-	DedupeTTL int     `mapstructure:"dedupe_ttl"` // NEW: Time-to-live for duplicate detection in seconds
+	DedupeTTL int     `mapstructure:"dedupe_ttl"`
 }
 
 type webhookSource struct {
@@ -211,7 +211,7 @@ func (w *webhookSource) evictExpiredEntries() {
 // cleanupCache periodically sweeps the seenCache and removes expired hashes
 // to prevent the application from slowly running out of memory.
 func (w *webhookSource) cleanupCache() {
-	ticker := time.NewTicker(1 * time.Minute)
+	ticker := time.NewTicker(time.Duration(w.params.DedupeTTL) * time.Second)
 	defer ticker.Stop()
 
 	for {
