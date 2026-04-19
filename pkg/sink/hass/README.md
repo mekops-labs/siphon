@@ -12,7 +12,7 @@ sinks:
     type: hass
     params:
       # MQTT Connection Details (Automatically injected if using the HA Add-on!)
-      url: "tcp://%%MQTT_HOST%%:%%MQTT_PORT%%"
+      url: "%%MQTT_HOST%%"
       user: "%%MQTT_USER%%"
       pass: "%%MQTT_PASS%%"
 
@@ -49,7 +49,7 @@ pipelines:
       vars:
         power: "$.watts"
     transform:
-      power_kw: "power / 1000"
+      - power_kw: "power / 1000"
     sinks:
       - name: "custom_ha_sensor"
 ```

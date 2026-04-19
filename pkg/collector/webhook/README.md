@@ -42,8 +42,9 @@ collectors:
 2. **Token Bucket Rate Limiting:** Prevents brute-force and DDoS attacks by strictly controlling the flow of incoming
    requests.
 3. **Automatic Deduplication:** Siphon calculates a SHA-256 hash of every incoming payload. If an identical hash is
-   received within the `dedupe_ttl` window, Siphon returns `200 OK` to the sender but silently drops the event to
-   prevent duplicate pipeline processing.
+   received within the `dedupe_ttl` window, Siphon returns `409 Conflict` to the sender and drops the event to
+   prevent duplicate pipeline processing. The `409` response allows the caller to distinguish a processed request
+   from a deduplicated one. Only authenticated callers can observe this response.
 4. **Payload Constraints:** Uses `http.MaxBytesReader` to terminate connections immediately if a client attempts to send
    a massive file to crash the system's memory.
 5. **Slowloris Protection:** Implements strict `ReadTimeout` and `IdleTimeout` at the socket level to prevent attackers

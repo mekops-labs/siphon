@@ -9,9 +9,10 @@ collectors:
   weather_api:
     type: rest
     params:
-      interval: 600           # Poll every 10 minutes
+      interval: 600           # Poll every 10 minutes (default: 60)
       method: "GET"           # Optional: Defaults to GET
-      timeout: 15             # Optional: Request timeout in seconds
+      timeout: 15             # Optional: Request timeout in seconds (default: 10)
+      body: ""                # Optional: Request body string (e.g. for POST)
       headers:
         "Authorization": "Bearer %%MY_API_KEY%%"
         "Accept": "application/json"

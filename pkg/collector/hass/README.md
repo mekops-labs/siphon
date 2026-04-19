@@ -35,7 +35,7 @@ pipelines:
 
     # 3. Transform and Dispatch...
     transform:
-      tempStr: "string(float(temp))+' '+unit"
+      - tempStr: "string(float(temp))+' '+unit"
 ```
 
 ## Quick How-To
@@ -70,8 +70,8 @@ pipelines:
         humidity: $[?(@.entity_id == "sensor.gw3000a_humidity")].state
     transform:
       # filter in jsonpath returns array, so we need to get first element and make sure it's number
-      temp: float(temp[0])
-      humidity: float(humidity[0])
+      - temp: float(temp[0])
+      - humidity: float(humidity[0])
 ```
 
 ## Requirements
