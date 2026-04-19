@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 (2026-04-19)
+
+- fix webhook collector: `dedupe_ttl` was not respected — cleanup ticker was hardcoded to 1 minute regardless of configured TTL value
+
+## 0.5.1 (2026-04-19)
+
+- general refactor and added unit tests
+
 ## 0.5.0 (2026-04-13)
 
 - add editor status line and display version
