@@ -81,15 +81,17 @@ func (s *gotifySink) Send(b []byte) error {
 		"priority": s.params.Priority,
 	}
 
-	if payload["title"] == "" {
-		payload["title"] = "Siphon Alert" // Default title
-		formattedTitle, err := reformatTitle(s.params.Title)
-		if err != nil {
+	title := s.params.Title
+	if title == "" {
+		title = "Siphon Alert"
+	} else {
+		if formatted, err := reformatTitle(title); err != nil {
 			log.Printf("Failed to reformat gotify title: %v", err)
-			formattedTitle = s.params.Title // Fallback to original title if formatting fails
+		} else {
+			title = formatted
 		}
-		payload["title"] = formattedTitle
 	}
+	payload["title"] = title
 
 	jsonPayload, _ := json.Marshal(payload)
 	targetURL, err := url.JoinPath(s.params.URL, "message")

@@ -56,3 +56,49 @@ func TestShellSource(t *testing.T) {
 		t.Fatal("timed out waiting for shell execution")
 	}
 }
+
+func TestShellSource_NonZeroExit(t *testing.T) {
+	b := &mockBus{published: make(chan struct {
+		topic   string
+		payload []byte
+	}, 1)}
+
+	col := New(map[string]interface{}{"interval": 60})
+	col.RegisterTopic("fail", "exit 1")
+
+	ss := col.(*shellSource)
+	ss.bus = b
+
+	// Must not panic for a command that exits with a non-zero status.
+	ss.executeCommands()
+
+	select {
+	case msg := <-b.published:
+		t.Errorf("expected no publish for failed command, got topic %s", msg.topic)
+	default:
+		// expected
+	}
+}
+
+func TestShellSource_InvalidCommand(t *testing.T) {
+	b := &mockBus{published: make(chan struct {
+		topic   string
+		payload []byte
+	}, 1)}
+
+	col := New(map[string]interface{}{"interval": 60})
+	col.RegisterTopic("bad", "__no_such_command_xyz__")
+
+	ss := col.(*shellSource)
+	ss.bus = b
+
+	// Must not panic for a command that cannot be found.
+	ss.executeCommands()
+
+	select {
+	case msg := <-b.published:
+		t.Errorf("expected no publish for invalid command, got topic %s", msg.topic)
+	default:
+		// expected
+	}
+}

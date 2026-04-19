@@ -67,25 +67,11 @@ func main() {
 	}
 }
 
-// startEngine loads config and initializes all components. On config error it
-// records the failure in status and returns no-op functions, leaving the editor
-// unaffected and reachable for the user to fix the config.
-func startEngine(configPath string, status *editor.Status) (context.CancelFunc, func()) {
-	noop := func() {}
-
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		msg := fmt.Sprintf("config error: %v", err)
-		log.Printf("Engine not started: %s", msg)
-		status.Set(false, msg)
-		return noop, noop
-	}
-
-	var warnings []string
-
-	eventBus := bus.NewMemoryBus()
-
+// buildCollectors initializes all collectors from the config. Unknown types are
+// skipped and a warning is appended; all other collectors are registered and returned.
+func buildCollectors(cfg *config.Config) (map[string]collector.Collector, []string) {
 	collectors := make(map[string]collector.Collector)
+	var warnings []string
 	for name, colCfg := range cfg.Collectors {
 		collectorInit, ok := collector.Registry[colCfg.Type]
 		if !ok {
@@ -101,8 +87,14 @@ func startEngine(configPath string, status *editor.Status) (context.CancelFunc, 
 		}
 		collectors[name] = c
 	}
+	return collectors, warnings
+}
 
+// buildSinks initializes all sinks from the config. Unknown types and init errors
+// are skipped; a warning is appended for each failure.
+func buildSinks(cfg *config.Config, eventBus bus.Bus) (map[string]sink.Sink, []string) {
 	sinks := make(map[string]sink.Sink)
+	var warnings []string
 	for name, sinkCfg := range cfg.Sinks {
 		sinkInit, ok := sink.Registry[sinkCfg.Type]
 		if !ok {
@@ -121,6 +113,31 @@ func startEngine(configPath string, status *editor.Status) (context.CancelFunc, 
 		sinks[name] = s
 		log.Printf("added sink: %s, type: %s", name, sinkCfg.Type)
 	}
+	return sinks, warnings
+}
+
+// startEngine loads config and initializes all components. On config error it
+// records the failure in status and returns no-op functions, leaving the editor
+// unaffected and reachable for the user to fix the config.
+func startEngine(configPath string, status *editor.Status) (context.CancelFunc, func()) {
+	noop := func() {}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		msg := fmt.Sprintf("config error: %v", err)
+		log.Printf("Engine not started: %s", msg)
+		status.Set(false, msg)
+		return noop, noop
+	}
+
+	eventBus := bus.NewMemoryBus()
+
+	collectors, collectorWarnings := buildCollectors(cfg)
+	sinks, sinkWarnings := buildSinks(cfg, eventBus)
+
+	var warnings []string
+	warnings = append(warnings, collectorWarnings...)
+	warnings = append(warnings, sinkWarnings...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 

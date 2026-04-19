@@ -250,6 +250,30 @@ func TestStatusEndpoint_ContentType(t *testing.T) {
 	}
 }
 
+// ---- /api/version ----------------------------------------------------------
+
+func TestVersionEndpoint(t *testing.T) {
+	mux := newMux("/any", make(chan struct{}, 1), NewStatus(), "test")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("expected Content-Type application/json, got %q", ct)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if body["version"] != "test" {
+		t.Errorf("expected version 'test', got %q", body["version"])
+	}
+}
+
 func TestStatusEndpoint_ReflectsUpdates(t *testing.T) {
 	status := NewStatus()
 	mux := newMux("/any", make(chan struct{}, 1), status, "test")

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -626,6 +627,151 @@ func TestRunner_StatefulEvent_AccumulationInitialization(t *testing.T) {
 		}
 	}
 }
+
+func TestRunner_Close_CallsSinkClose(t *testing.T) {
+	closed := make(chan struct{}, 2)
+	mkSink := func() *mockCloseSink { return &mockCloseSink{closed: closed} }
+
+	b := bus.NewMemoryBus()
+	r := NewRunner(b, map[string]sink.Sink{
+		"alpha": mkSink(),
+		"beta":  mkSink(),
+	})
+
+	r.Close()
+
+	count := 0
+	for count < 2 {
+		select {
+		case <-closed:
+			count++
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("Close() only called %d/%d sink Close() methods", count, 2)
+		}
+	}
+}
+
+func TestRunner_DispatchState_NilState(t *testing.T) {
+	received := make(chan []byte, 1)
+	ms := &mockSinkWithChannel{received: received}
+	b := bus.NewMemoryBus()
+	r := NewRunner(b, map[string]sink.Sink{"test": ms})
+
+	cfg := config.PipelineConfig{
+		Name:  "nil-state-test",
+		Sinks: []config.PipelineSinkConfig{{Name: "test"}},
+	}
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	r.dispatchState(cp, nil) // must be a no-op
+
+	select {
+	case data := <-received:
+		t.Errorf("expected no dispatch for nil state, got: %s", data)
+	case <-time.After(50 * time.Millisecond):
+		// expected — nothing dispatched
+	}
+}
+
+func TestRunner_DispatchState_EmptySinks_PublishesToBus(t *testing.T) {
+	b := bus.NewMemoryBus()
+	r := NewRunner(b, make(map[string]sink.Sink))
+
+	cfg := config.PipelineConfig{Name: "empty-sinks"}
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	ch := b.Subscribe("empty-sinks")
+
+	r.dispatchState(cp, map[string]any{"key": "value"})
+
+	select {
+	case event := <-ch:
+		if !bytes.Contains(event.Payload, []byte("value")) {
+			t.Errorf("unexpected payload: %s", event.Payload)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("expected bus publish for pipeline with no sinks")
+	}
+}
+
+func TestRunner_DispatchToSinks_ErrorContinues(t *testing.T) {
+	// First sink errors, second sink should still receive the message.
+	received := make(chan []byte, 1)
+	b := bus.NewMemoryBus()
+	r := NewRunner(b, map[string]sink.Sink{
+		"erroring": &errorSink{},
+		"good":     &mockSinkWithChannel{received: received},
+	})
+
+	cfg := config.PipelineConfig{
+		Sinks: []config.PipelineSinkConfig{
+			{Name: "erroring"},
+			{Name: "good"},
+		},
+	}
+	cp, err := r.compile(cfg)
+	if err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	r.dispatchToSinks(cp, map[string]any{"x": 1})
+
+	select {
+	case data := <-received:
+		if len(data) == 0 {
+			t.Error("expected non-empty payload from good sink")
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("good sink did not receive dispatch after erroring sink failed")
+	}
+}
+
+func TestRunner_Start_PartialFailure(t *testing.T) {
+	b := bus.NewMemoryBus()
+	r := NewRunner(b, map[string]sink.Sink{"stdout": &mockSink{}})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pipelines := []config.PipelineConfig{
+		{Name: "good", Topics: []string{"t"}},
+		{Name: "bad", Parser: &config.ParserConfig{Type: "no-such-parser"}},
+	}
+
+	started, warnings := r.Start(ctx, pipelines)
+
+	if started != 1 {
+		t.Errorf("expected 1 started pipeline, got %d", started)
+	}
+	if len(warnings) != 1 {
+		t.Errorf("expected 1 warning, got %d: %v", len(warnings), warnings)
+	}
+	if len(warnings) > 0 && warnings[0] == "" {
+		t.Error("expected non-empty warning message")
+	}
+}
+
+// mockCloseSink signals on its channel when Close() is called.
+type mockCloseSink struct {
+	closed chan struct{}
+}
+
+func (m *mockCloseSink) Send(b []byte) error { return nil }
+func (m *mockCloseSink) Close() error {
+	m.closed <- struct{}{}
+	return nil
+}
+
+// errorSink always returns an error from Send.
+type errorSink struct{}
+
+func (e *errorSink) Send(b []byte) error { return errors.New("send failed") }
+func (e *errorSink) Close() error        { return nil }
 
 // mockSinkWithChannel implements the sink.Sink interface for testing with a channel
 type mockSinkWithChannel struct {

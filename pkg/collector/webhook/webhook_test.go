@@ -165,3 +165,34 @@ func TestWebhookCollector_Integration(t *testing.T) {
 		}
 	})
 }
+
+func TestWebhookCollector_CacheEviction(t *testing.T) {
+	// Configure a very short DedupeTTL so entries expire immediately.
+	c := New(map[string]any{"dedupe_ttl": 1})
+	w := c.(*webhookSource)
+
+	// Manually insert a cache entry with a timestamp far in the past.
+	hash := "fakehash"
+	w.cacheLock.Lock()
+	w.seenCache[hash] = time.Now().Add(-2 * time.Second)
+	w.cacheLock.Unlock()
+
+	// Before eviction the entry should be present.
+	w.cacheLock.RLock()
+	_, before := w.seenCache[hash]
+	w.cacheLock.RUnlock()
+	if !before {
+		t.Fatal("expected cache entry to be present before eviction")
+	}
+
+	// Evict expired entries directly (no ticker needed).
+	w.evictExpiredEntries()
+
+	// After eviction the entry should be gone.
+	w.cacheLock.RLock()
+	_, after := w.seenCache[hash]
+	w.cacheLock.RUnlock()
+	if after {
+		t.Error("expected cache entry to be evicted after TTL expiry")
+	}
+}

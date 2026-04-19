@@ -194,27 +194,32 @@ func (w *webhookSource) Start(b bus.Bus) {
 	}()
 }
 
+// evictExpiredEntries removes cache entries older than DedupeTTL. It is called
+// periodically by cleanupCache and can be called directly in tests.
+func (w *webhookSource) evictExpiredEntries() {
+	ttlDuration := time.Duration(w.params.DedupeTTL) * time.Second
+	now := time.Now()
+	w.cacheLock.Lock()
+	for hash, timestamp := range w.seenCache {
+		if now.Sub(timestamp) > ttlDuration {
+			delete(w.seenCache, hash)
+		}
+	}
+	w.cacheLock.Unlock()
+}
+
 // cleanupCache periodically sweeps the seenCache and removes expired hashes
 // to prevent the application from slowly running out of memory.
 func (w *webhookSource) cleanupCache() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
-	ttlDuration := time.Duration(w.params.DedupeTTL) * time.Second
-
 	for {
 		select {
 		case <-w.ctx.Done():
 			return
 		case <-ticker.C:
-			now := time.Now()
-			w.cacheLock.Lock()
-			for hash, timestamp := range w.seenCache {
-				if now.Sub(timestamp) > ttlDuration {
-					delete(w.seenCache, hash)
-				}
-			}
-			w.cacheLock.Unlock()
+			w.evictExpiredEntries()
 		}
 	}
 }
