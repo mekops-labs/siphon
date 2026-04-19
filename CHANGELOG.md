@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 (2026-04-19)
+
+- fix webhook collector: duplicate payloads now return `409 Conflict` instead of `200 OK`
+
 ## 0.5.2 (2026-04-19)
 
 - fix webhook collector: `dedupe_ttl` was not respected — cleanup ticker was hardcoded to 1 minute regardless of configured TTL value
