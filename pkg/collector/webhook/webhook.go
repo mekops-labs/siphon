@@ -152,11 +152,8 @@ func (w *webhookSource) Start(b bus.Bus) {
 			w.cacheLock.RUnlock()
 
 			if seen {
-				// We already processed this exact payload recently.
-				// Return 200 OK so the sender stops retrying, but DO NOT publish to the bus.
 				log.Printf("Webhook [%s]: Ignored duplicate payload (Hash: %s)", a, hashStr[:8])
-				rw.WriteHeader(http.StatusOK)
-				rw.Write([]byte("OK"))
+				http.Error(rw, "duplicate payload", http.StatusConflict)
 				return
 			}
 
