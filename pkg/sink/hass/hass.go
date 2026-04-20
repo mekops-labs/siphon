@@ -32,8 +32,12 @@ type hassParams struct {
 	ValueTemplate     string `mapstructure:"value_template"`
 	Icon              string `mapstructure:"icon"`
 	AvailabilityTopic string `mapstructure:"availability_topic"`
-}
 
+	// Device Automation (Triggers)
+	TriggerType string `mapstructure:"trigger_type"` // e.g., "button_short_press"
+	Subtype     string `mapstructure:"subtype"`      // e.g., "button_1"
+	Payload     string `mapstructure:"payload"`      // optional: HA only fires trigger on exact match
+}
 type hassSink struct {
 	params            hassParams
 	client            paho.Client
@@ -67,6 +71,14 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 	if opt.Component == "" {
 		opt.Component = "sensor"
 	}
+
+	// Validate Device Automation
+	if opt.Component == "device_automation" {
+		if opt.TriggerType == "" {
+			return nil, fmt.Errorf("device_automation requires a trigger_type")
+		}
+	}
+
 	if opt.Name == "" {
 		opt.Name = "Siphon " + strings.Title(strings.ReplaceAll(opt.ObjectID, "_", " "))
 	}
@@ -80,29 +92,52 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 
 	configTopic := baseTopic + "/config"
 	stateTopic := baseTopic + "/state"
+	if opt.Component == "device_automation" {
+		stateTopic = baseTopic + "/action"
+	}
 
 	// Default to a sub-topic for availability if not explicitly provided
 	availabilityTopic := opt.AvailabilityTopic
-	if availabilityTopic == "" {
+	if availabilityTopic == "" && opt.Component != "device_automation" {
 		availabilityTopic = baseTopic + "/availability"
 	}
-
 	// Build the Discovery Config Payload
-	configPayload := map[string]interface{}{
-		"name":                  opt.Name,
-		"state_topic":           stateTopic,
-		"availability_topic":    availabilityTopic,
-		"payload_available":     "online",
-		"payload_not_available": "offline",
-		"unique_id":             fmt.Sprintf("siphon_%s", opt.ObjectID),
-		"device": map[string]interface{}{
-			"identifiers":  []string{"siphon_etl_engine"},
-			"name":         "Siphon ETL Engine",
-			"manufacturer": "Mekops Labs",
-			"model":        "Siphon V2",
-		},
-	}
+	var configPayload map[string]interface{}
 
+	if opt.Component == "device_automation" {
+		configPayload = map[string]interface{}{
+			"automation_type": "trigger",
+			"type":            opt.TriggerType,
+			"topic":           stateTopic,
+			"device": map[string]interface{}{
+				"identifiers":  []string{"siphon_etl_engine"},
+				"name":         "Siphon ETL Engine",
+				"manufacturer": "Mekops Labs",
+				"model":        "Siphon V2",
+			},
+		}
+		if opt.Subtype != "" {
+			configPayload["subtype"] = opt.Subtype
+		}
+		if opt.Payload != "" {
+			configPayload["payload"] = opt.Payload
+		}
+	} else {
+		configPayload = map[string]interface{}{
+			"name":                  opt.Name,
+			"state_topic":           stateTopic,
+			"availability_topic":    availabilityTopic,
+			"payload_available":     "online",
+			"payload_not_available": "offline",
+			"unique_id":             fmt.Sprintf("siphon_%s", opt.ObjectID),
+			"device": map[string]interface{}{
+				"identifiers":  []string{"siphon_etl_engine"},
+				"name":         "Siphon ETL Engine",
+				"manufacturer": "Mekops Labs",
+				"model":        "Siphon V2",
+			},
+		}
+	}
 	// Add optional fields
 	if opt.DeviceClass != "" {
 		configPayload["device_class"] = opt.DeviceClass
@@ -142,7 +177,9 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 	opts.SetConnectRetryInterval(5 * time.Second)
 	opts.SetTLSConfig(&tls.Config{InsecureSkipVerify: true})
 
-	opts.SetWill(availabilityTopic, "offline", 1, true)
+	if availabilityTopic != "" {
+		opts.SetWill(availabilityTopic, "offline", 1, true)
+	}
 
 	// OnConnect Callback
 	opts.OnConnect = func(client paho.Client) {
@@ -152,9 +189,10 @@ func New(params any, _ bus.Bus) (sink.Sink, error) {
 		client.Publish(configTopic, 1, true, configBytes)
 
 		// 2. Publish Birth Message (Online)
-		client.Publish(availabilityTopic, 1, true, []byte("online"))
+		if availabilityTopic != "" {
+			client.Publish(availabilityTopic, 1, true, []byte("online"))
+		}
 	}
-
 	opts.OnConnectionLost = func(client paho.Client, err error) {
 		log.Printf("HASS Sink MQTT connection lost: %v", err)
 	}
@@ -196,9 +234,12 @@ func (s *hassSink) Send(b []byte) error {
 
 func (s *hassSink) Close() error {
 	if s.client != nil && s.client.IsConnected() {
-		log.Printf("HASS Sink [%s]: Closing connection and sending offline message", s.params.ObjectID)
-		// Explicitly publish offline message so HA updates immediately
-		s.client.Publish(s.availabilityTopic, 1, true, "offline").Wait()
+		log.Printf("HASS Sink [%s]: Closing connection", s.params.ObjectID)
+		if s.availabilityTopic != "" {
+			log.Printf("HASS Sink [%s]: Sending offline message", s.params.ObjectID)
+			// Explicitly publish offline message so HA updates immediately
+			s.client.Publish(s.availabilityTopic, 1, true, "offline").Wait()
+		}
 		s.client.Disconnect(250)
 	}
 	return nil

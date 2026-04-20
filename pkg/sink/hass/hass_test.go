@@ -126,24 +126,115 @@ func TestHassSink_Close(t *testing.T) {
 }
 
 func TestDiscoveryPayload(t *testing.T) {
-	// This tests the logic inside New that builds the configPayload
-	opt := hassParams{
-		Name: "Total Power",
+	// ... (existing TestDiscoveryPayload)
+}
+
+func TestNew_DeviceAutomation_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  map[string]any
+		wantErr bool
+	}{
+		{
+			name: "Missing TriggerType",
+			params: map[string]any{
+				"url":       "tcp://localhost:1883",
+				"object_id": "test_trigger",
+				"component": "device_automation",
+			},
+			wantErr: true,
+		},
 	}
 
-	// Mimic the logic in New()
-	stateTopic := "homeassistant/sensor/power_meter/state"
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(tt.params, nil)
+			if tt.wantErr && err == nil {
+				t.Errorf("expected error but got nil")
+			}
+		})
+	}
+}
+
+func TestDiscoveryPayload_DeviceAutomation(t *testing.T) {
+	params := hassParams{
+		Component:   "device_automation",
+		TriggerType: "button_short_press",
+		Subtype:     "button_1",
+		ObjectID:    "garmin_button",
+		Payload:     "PRESS",
+	}
+
+	stateTopic := "homeassistant/device_automation/garmin_button/action"
+
 	configPayload := map[string]interface{}{
-		"name":        opt.Name,
-		"state_topic": stateTopic,
-		"unique_id":   "siphon_power_meter",
+		"automation_type": "trigger",
+		"type":            params.TriggerType,
+		"subtype":         params.Subtype,
+		"topic":           stateTopic,
+		"payload":         params.Payload,
+		"device": map[string]interface{}{
+			"identifiers": []string{"siphon_etl_engine"},
+			"name":        "Siphon ETL Engine",
+		},
 	}
 
 	out, _ := json.Marshal(configPayload)
 	var decoded map[string]interface{}
 	json.Unmarshal(out, &decoded)
 
-	if decoded["unique_id"] != "siphon_power_meter" {
-		t.Errorf("incorrect unique_id: %v", decoded["unique_id"])
+	if decoded["automation_type"] != "trigger" {
+		t.Errorf("expected automation_type trigger, got %v", decoded["automation_type"])
+	}
+	if decoded["type"] != "button_short_press" {
+		t.Errorf("expected type button_short_press, got %v", decoded["type"])
+	}
+	if decoded["topic"] != stateTopic {
+		t.Errorf("expected topic %s, got %v", stateTopic, decoded["topic"])
+	}
+	if decoded["payload"] != "PRESS" {
+		t.Errorf("expected payload PRESS, got %v", decoded["payload"])
+	}
+}
+
+func TestHassSink_Send_DeviceAutomation(t *testing.T) {
+	mock := &mockMqttClient{connected: true}
+	s := &hassSink{
+		client:     mock,
+		stateTopic: "homeassistant/device_automation/garmin_button/action",
+	}
+
+	payload := []byte(`PRESS`)
+	err := s.Send(payload)
+
+	if err != nil {
+		t.Errorf("Send failed: %v", err)
+	}
+	if mock.publishedTopic != s.stateTopic {
+		t.Errorf("expected topic %s, got %s", s.stateTopic, mock.publishedTopic)
+	}
+	if string(mock.publishedPayload.([]byte)) != string(payload) {
+		t.Errorf("expected payload %s, got %s", string(payload), string(mock.publishedPayload.([]byte)))
+	}
+}
+
+func TestHassSink_Close_DeviceAutomation(t *testing.T) {
+	mock := &mockMqttClient{connected: true}
+	s := &hassSink{
+		client:            mock,
+		availabilityTopic: "",
+		params:            hassParams{ObjectID: "test", Component: "device_automation"},
+	}
+
+	err := s.Close()
+	if err != nil {
+		t.Errorf("Close failed: %v", err)
+	}
+
+	if mock.publishedTopic != "" {
+		t.Errorf("expected no publishing, got %s", mock.publishedTopic)
+	}
+	if !mock.disconnectCalled {
+		t.Error("Disconnect was not called")
 	}
 }

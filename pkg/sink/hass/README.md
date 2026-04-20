@@ -35,6 +35,43 @@ The HASS sink automatically manages the entity's availability status using MQTT 
 
 By default, the availability topic is derived from the `object_id`, but it can be overridden using the `availability_topic` parameter.
 
+## Device Triggers
+
+Unlike entities (sensors, switches, etc.), **Device Triggers** are purely event-driven. They do not have a state or availability lifecycle. When Siphon dispatches data to a `device_automation` sink, it fires a trigger in Home Assistant that can be used directly in automations.
+
+### Configuration Example
+
+```yaml
+sinks:
+  garmin_watch_trigger:
+    type: hass
+    params:
+      url: "%%MQTT_HOST%%"
+      object_id: "garmin_watch"
+      component: "device_automation"
+      trigger_type: "button_short_press"
+      subtype: "button_1"
+      icon: "mdi:watch"
+```
+
+### Resulting Home Assistant Automation
+
+You can then use this trigger in your `automations.yaml`:
+
+```yaml
+- alias: "Handle Garmin Watch Press"
+  trigger:
+    - platform: device
+      domain: mqtt
+      device_id: <siphon_device_id>
+      type: button_short_press
+      subtype: button_1
+  action:
+    - service: light.toggle
+      target:
+        entity_id: light.living_room
+```
+
 ## Usage in Pipelines
 
 To use the HASS sink, reference it by the name defined in your `sinks` section within a pipeline. Siphon will dispatch the resulting state of the pipeline to the HASS entity.
