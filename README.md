@@ -77,7 +77,7 @@ pipelines, collectors, and sinks directly through a browser with syntax highligh
 Siphon is designed to work seamlessly with Home Assistant.
 
 - **`hass` Collector:** Polls HA entity states via the Supervisor REST API using `SUPERVISOR_TOKEN`. Supports wildcard `*` to retrieve all entities.
-- **`hass` Sink:** Registers entities in HA via **MQTT Auto-Discovery**. Component-aware: the `component` field (`sensor`, `button`, `lock`, `valve`, `switch`, `cover`, `fan`, `light`, and 11 more) determines which MQTT topics are used. All topics are auto-generated from the entity's base path and individually overridable. Controllable components automatically use `command_topic`; read-only components use `state_topic`.
+- **`hass` Sink:** Registers entities in HA via **MQTT Auto-Discovery**. Supports both stateful entities (sensors, binary_sensors) and stateless event triggers (`device_automation`). All topics are auto-generated from the entity's base path and individually overridable.
 - **Add-on:** Siphon is available as a pre-packaged Home Assistant Add-on with automatic MQTT credential injection. See the [siphon-ha-addon](https://github.com/mekops-labs/siphon-ha-addon) repository for installation instructions.
 
 ### Environment variable substitution
