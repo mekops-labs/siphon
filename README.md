@@ -22,10 +22,11 @@ Siphon uses a decoupled architecture where data collection, routing, and deliver
 graph LR
     subgraph Sources [Collectors]
         A1[MQTT]
-        A2[File]
-        A3[Shell]
-        A4[Home Assistant]
-        A1 ~~~ A2 ~~~ A3 ~~~ A4
+        A2[REST]
+        A3[Webhook]
+        A4[File / Shell]
+        A5[Home Assistant]
+        A1 ~~~ A2 ~~~ A3 ~~~ A4 ~~~ A5
     end
 
     B((Internal Bus))
@@ -38,11 +39,12 @@ graph LR
     end
 
     subgraph Destinations [Sinks]
-        D1[REST / ntfy / Gotify]
+        D1[Home Assistant Auto-Discovery]
         D2[MQTT]
-        D3[File / CSV]
-        D4[Internal Bus]
-        D1 ~~~ D2 ~~~ D3 ~~~ D4
+        D3[ntfy / Gotify]
+        D4[Windy / IoTPlotter]
+        D5[Internal Bus / stdout]
+        D1 ~~~ D2 ~~~ D3 ~~~ D4 ~~~ D5
     end
 
     Sources -- publishes --> B
@@ -74,9 +76,9 @@ pipelines, collectors, and sinks directly through a browser with syntax highligh
 
 Siphon is designed to work seamlessly with Home Assistant.
 
-- Collector: Includes a dedicated `hass` collector to poll entity states.
-- Add-on: Siphon is available as a pre-packaged Home Assistant Add-on. See the [siphon-ha-addon](https://github.com/mekops-labs/siphon-ha-addon) repository for
-installation instructions.
+- **`hass` Collector:** Polls HA entity states via the Supervisor REST API using `SUPERVISOR_TOKEN`. Supports wildcard `*` to retrieve all entities.
+- **`hass` Sink:** Registers entities in HA via **MQTT Auto-Discovery**. Component-aware: the `component` field (`sensor`, `button`, `lock`, `valve`, `switch`, `cover`, `fan`, `light`, and 11 more) determines which MQTT topics are used. All topics are auto-generated from the entity's base path and individually overridable. Controllable components automatically use `command_topic`; read-only components use `state_topic`.
+- **Add-on:** Siphon is available as a pre-packaged Home Assistant Add-on with automatic MQTT credential injection. See the [siphon-ha-addon](https://github.com/mekops-labs/siphon-ha-addon) repository for installation instructions.
 
 ### Environment variable substitution
 
