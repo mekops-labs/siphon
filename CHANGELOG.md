@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4 (2026-04-20)
+
+- hass sink: native **MQTT Device Trigger** (`device_automation`) support for stateless event pushing
+- hass sink: unified, data-driven topic handling for stateful entities (sensors, binary_sensors)
+- hass sink: auto-generation and per-topic overrides for state and availability topics
+
 ## 0.5.3 (2026-04-19)
 
 - fix webhook collector: duplicate payloads now return `409 Conflict` instead of `200 OK`
